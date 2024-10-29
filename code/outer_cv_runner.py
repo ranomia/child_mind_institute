@@ -134,7 +134,7 @@ class OuterCVRunner:
             # 学習を行う
             logger.info(f'{self.run_name} fold {i_fold} - start training')
             model, va_idx, va_pred, score_dict = self.train_fold(i_fold)
-            logger.info(f'{self.run_name} fold {i_fold} - end training - score {score}')
+            logger.info(f'{self.run_name} fold {i_fold} - end training - score {score_dict['va_rmse']}')
 
             # モデルを保存する
             model.save_model()
