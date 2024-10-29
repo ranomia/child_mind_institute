@@ -5,17 +5,23 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import root_mean_squared_error
 from sklearn.model_selection import KFold
 from sklearn.model_selection import train_test_split
+from sklearn.ensemble import VotingRegressor
+from lightgbm import LGBMRegressor
+from xgboost import XGBRegressor
+from catboost import CatBoostRegressor
+
 from typing import Callable, List, Optional, Tuple, Union
 
 from model import Model
-from model_lgb import ModelLGB, ModelLGBWrapper
-from model_mlp import ModelMLP, ModelMLPWrapper
 from inner_cv_runner import InnerCVRunner
+from util import quadratic_weighted_kappa, evaluate_predictions
 from util import Logger, Util, ShuffledGroupKFold
 from config import Config
+from params import Params
 
 logger = Logger()
 config = Config()
+params = Params()
 
 class OuterCVRunner:
     def __init__(self, run_name: str, model_cls: Callable[[str, str, dict], Model], params: dict):
@@ -87,19 +93,24 @@ class OuterCVRunner:
             va_x, va_y, va_g = train_x.iloc[va_idx], train_y.iloc[va_idx], train_group.iloc[va_idx]
 
             # ハイパーパラメータのチューニングを行う
-            inner_runner = InnerCVRunner(self.model_cls)
-            best_params = inner_runner.parameter_tuning(tu_x, tu_y, tu_g, n_trials=100)
+            # inner_runner = InnerCVRunner(self.model_cls)
+            # best_params = inner_runner.parameter_tuning(tu_x, tu_y, tu_g, n_trials=100)
 
             # 学習を行う
-            model_pipe = self.build_model(is_pipeline=True, i_fold=i_fold, params=best_params)
-            model_pipe.train_model(tr_x, tr_y, va_x, va_y)
+            model = self.build_model(is_pipeline=False, i_fold=i_fold, params=best_params)
+            model.fit(tr_x, tr_y)
 
-            # バリデーションデータへの予測・評価を行う
-            va_y_pred = model_pipe.predict_model(va_x)
-            score = root_mean_squared_error(va_y, va_y_pred)
+            # 学習データ・バリデーションデータへの予測・評価を行う
+            tr_y_pred = model.predict(tr_x)
+            va_y_pred = model.predict(va_x)
 
+            # 評価指標の算出
+            score_dict = {}
+            score_dict['tr_rmse'] = root_mean_squared_error(tr_y, tr_y_pred)
+            score_dict['va_rmse'] = root_mean_squared_error(va_y, va_y_pred)
+            
             # モデル、インデックス、予測値、評価を返す
-            return model_pipe, va_idx, va_y_pred, score
+            return model, va_idx, va_y_pred, score_dict
         else:
             # 学習データ全てで学習を行う
             model_pipe = self.build_model(is_pipeline=True, i_fold=i_fold, params=self.params)
@@ -114,15 +125,15 @@ class OuterCVRunner:
         """
         logger.info(f'{self.run_name} - start training outer cv')
 
-        scores = []
         va_idxes = []
-        preds = []
+        va_preds = []
+        scores = []
 
         # 各foldで学習を行う
         for i_fold in range(self.n_fold):
             # 学習を行う
             logger.info(f'{self.run_name} fold {i_fold} - start training')
-            model, va_idx, va_pred, score = self.train_fold(i_fold)
+            model, va_idx, va_pred, score_dict = self.train_fold(i_fold)
             logger.info(f'{self.run_name} fold {i_fold} - end training - score {score}')
 
             # モデルを保存する
@@ -130,8 +141,8 @@ class OuterCVRunner:
 
             # 結果を保持する
             va_idxes.append(va_idx)
-            scores.append(score)
-            preds.append(va_pred)
+            va_preds.append(va_pred)
+            scores.append(score_dict)
         
         # 各foldの結果をまとめる
         va_idxes = np.concatenate(va_idxes)
@@ -224,8 +235,19 @@ class OuterCVRunner:
         if is_pipeline:
             model = self.build_pipeline(self.run_name, fold_name, params)
         else:
-            model = self.model_cls(self.run_name, fold_name, params)
-        return model
+            # model = self.model_cls(self.run_name, fold_name, params)
+            lgb_ins = LGBMRegressor(params.lgb_params, random_state=config.cv_seed, verbose=-1, n_estimators=300)
+            xgb_ins = XGBRegressor(params.xgb_params)
+            cat_ins = CatBoostRegressor(params.cat_params)
+
+            voting_model = VotingRegressor(
+                estimators=[
+                     ('lightgbm', lgb_ins)
+                    ,('xgboost', xgb_ins)
+                    ,('catboost', cat_ins)
+                ]
+            )
+        return voting_model
     
     def load_x_train(self) -> pd.DataFrame:
         """

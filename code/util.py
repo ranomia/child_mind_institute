@@ -10,6 +10,8 @@ from sklearn.model_selection import GroupKFold
 import torch
 from torch.utils.data import Dataset
 
+from sklearn.metrics import cohen_kappa_score
+
 class Util:
     @classmethod
     def dump(cls, value, path):
