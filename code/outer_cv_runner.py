@@ -2,10 +2,12 @@ import numpy as np
 import pandas as pd
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import root_mean_squared_error
+from sklearn.metrics import root_mean_squared_error, mean_absolute_error
 from sklearn.model_selection import KFold
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import VotingRegressor
+from sklearn.base import clone
+from sklearn.impute import SimpleImputer
 from lightgbm import LGBMRegressor
 from xgboost import XGBRegressor
 from catboost import CatBoostRegressor
@@ -39,32 +41,8 @@ class OuterCVRunner:
         self.params = params
         self.n_fold = 3
         self.dtype_dict = {}
-    
-    # パイプライン構築関数
-    def build_pipeline(self, run_name: str, fold_name: str, params: dict):
-        """
-        標準化とモデルのパイプラインを作成する
 
-        :param model: モデル
-        :param params: モデルに適用するパラメータ
-        :return: 標準化とモデルのパイプライン
-        """
-        if self.model_cls == ModelLGB:
-            pipeline = Pipeline([
-                ('scaler', StandardScaler()),  # 標準化
-                ('model', ModelLGBWrapper(model_cls=self.model_cls, run_name=run_name, fold_name=fold_name, params=params))  # モデル
-            ])
-        elif self.model_cls == ModelMLP:
-            pipeline = Pipeline([
-                ('scaler', StandardScaler()),  # 標準化
-                ('model', ModelMLPWrapper(model_cls=self.model_cls, run_name=run_name, fold_name=fold_name, params=params))  # モデル
-            ])
-        else:
-            raise ValueError("model_cls must be ModelLGB or ModelMLP.")
-        return pipeline
-
-    def train_fold(self, i_fold: Union[int, str]) -> Tuple[
-        Model, Optional[np.array], Optional[np.array], Optional[float]]:
+    def train_fold(self, i_fold: Union[int, str], cv_results: dict):
         """
         クロスバリデーションにおける特定のfoldの学習・評価を行う
 
@@ -105,12 +83,23 @@ class OuterCVRunner:
             va_y_pred = model.predict(va_x)
 
             # 評価指標の算出
-            score_dict = {}
-            score_dict['tr_rmse'] = root_mean_squared_error(tr_y, tr_y_pred)
-            score_dict['va_rmse'] = root_mean_squared_error(va_y, va_y_pred)
+            cv_results['tr_rmse'].append(root_mean_squared_error(tr_y, tr_y_pred))
+            cv_results['va_rmse'].append(root_mean_squared_error(va_y, va_y_pred))
+            cv_results['tr_mae'].append(mean_absolute_error(tr_y, tr_y_pred))
+            cv_results['va_mae'].append(mean_absolute_error(va_y, va_y_pred))
             
+            # 実験条件・結果の保存
+            cv_results['tr_idx'].append(tr_idx)
+            cv_results['tu_idx'].append(tu_idx)
+            cv_results['va_idx'].append(va_idx)
+            cv_results['tr_y'].append(tr_y)
+            cv_results['va_y'].append(tr_y)
+            cv_results['tr_y_pred'].append(tr_y_pred)
+            cv_results['va_y_pred'].append(va_y_pred)
+            cv_results['params'].append(best_params)
+
             # モデル、インデックス、予測値、評価を返す
-            return model, va_idx, va_y_pred, score_dict
+            return model, cv_results
         else:
             # 学習データ全てで学習を行う
             model_pipe = self.build_model(is_pipeline=True, i_fold=i_fold, params=self.params)
@@ -128,32 +117,42 @@ class OuterCVRunner:
         va_idxes = []
         va_preds = []
         scores = []
+        cv_results = {
+            'tr_idx': [],       # 各foldの学習データのインデックス
+            'tu_idx': [],       # 各foldのチューニングデータのインデックス
+            'va_idx': [],       # 各foldの検証データのインデックス
+            'group': [],             # 分析用のグループ
+            'tr_rmse': [],       # 各foldの学習データに対するRMSE
+            'va_rmse': [],       # 各foldの検証データに対するRMSE
+            'tr_mae': [],        # 各foldの学習データに対するMAE
+            'va_mae': [],        # 各foldの検証データに対するMAE
+            'tr_y': [],           # 各foldの学習データに対する予測値
+            'va_y': [],           # 各foldの学習データの正解値
+            'tr_y_pred': [],           # 各foldの検証データに対する予測値
+            'va_y_true': [],           # 各foldの検証データの正解値
+            'params': []            # 各foldのモデルのハイパーパラメータ
+        }
 
         # 各foldで学習を行う
         for i_fold in range(self.n_fold):
             # 学習を行う
             logger.info(f'{self.run_name} fold {i_fold} - start training')
-            model, va_idx, va_pred, score_dict = self.train_fold(i_fold)
-            logger.info(f'{self.run_name} fold {i_fold} - end training - score {score_dict['va_rmse']}')
+            model, cv_results = self.train_fold(i_fold, cv_results)
+            logger.info(f'{self.run_name} fold {i_fold} - end training - score {cv_results['va_rmse'][i_fold]}')
 
             # モデルを保存する
             model.save_model()
-
-            # 結果を保持する
-            va_idxes.append(va_idx)
-            va_preds.append(va_pred)
-            scores.append(score_dict)
         
         # 各foldの結果をまとめる
-        va_idxes = np.concatenate(va_idxes)
-        order = np.argsort(va_idxes)
-        preds = np.concatenate(preds, axis=0)
-        preds = preds[order]
+        # va_idxes = np.concatenate(va_idxes)
+        # order = np.argsort(va_idxes)
+        # preds = np.concatenate(preds, axis=0)
+        # preds = preds[order]
 
-        logger.info(f'{self.run_name} - end training outer cv - score {np.mean(scores)}')
+        logger.info(f'{self.run_name} - end training outer cv - score {np.mean(cv_results['va_rmse'])}')
 
         # 予測結果の保存
-        Util.dump(preds, f'../model/{self.run_name}/pred/train.pkl')
+        # Util.dump(preds, f'../model/{self.run_name}/pred/train.pkl')
 
         # 評価結果の保存
         logger.result_scores(self.run_name, scores)
@@ -233,21 +232,39 @@ class OuterCVRunner:
         fold_name = str(i_fold)
         # ラン名、fold、モデルのクラスからモデルを作成する
         if is_pipeline:
-            model = self.build_pipeline(self.run_name, fold_name, params)
-        else:
-            # model = self.model_cls(self.run_name, fold_name, params)
-            lgb_ins = LGBMRegressor(params.lgb_params, random_state=config.cv_seed, verbose=-1, n_estimators=300)
-            xgb_ins = XGBRegressor(params.xgb_params)
-            cat_ins = CatBoostRegressor(params.cat_params)
+            # model = self.build_pipeline(self.run_name, fold_name, params)
+            lgb_model = LGBMRegressor(params.lgb_params, random_state=config.cv_seed, verbose=-1, n_estimators=300)
+            xgb_model = XGBRegressor(params.xgb_params)
+            cat_model = CatBoostRegressor(params.cat_params)
 
             voting_model = VotingRegressor(
                 estimators=[
-                     ('lightgbm', lgb_ins)
-                    ,('xgboost', xgb_ins)
-                    ,('catboost', cat_ins)
+                     ('lightgbm', lgb_model)
+                    ,('xgboost', xgb_model)
+                    ,('catboost', cat_model)
                 ]
             )
-        return voting_model
+
+            pipeline = Pipeline([
+                ('imputer', SimpleImputer(strategy='mean')),
+                ('scaler', StandardScaler()),
+                ('model', clone(voting_model))
+            ])
+            return pipeline
+        else:
+            # model = self.model_cls(self.run_name, fold_name, params)
+            lgb_model = LGBMRegressor(params.lgb_params, random_state=config.cv_seed, verbose=-1, n_estimators=300)
+            xgb_model = XGBRegressor(params.xgb_params)
+            cat_model = CatBoostRegressor(params.cat_params)
+
+            voting_model = VotingRegressor(
+                estimators=[
+                     ('lightgbm', lgb_model)
+                    ,('xgboost', xgb_model)
+                    ,('catboost', cat_model)
+                ]
+            )
+            return voting_model
     
     def load_x_train(self) -> pd.DataFrame:
         """
