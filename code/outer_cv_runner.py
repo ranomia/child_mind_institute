@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import os
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import root_mean_squared_error, mean_absolute_error
@@ -14,19 +15,17 @@ from catboost import CatBoostRegressor
 
 from typing import Callable, List, Optional, Tuple, Union
 
-from model import Model
 from inner_cv_runner import InnerCVRunner
-from util import quadratic_weighted_kappa, evaluate_predictions
 from util import Logger, Util, ShuffledGroupKFold
 from config import Config
 from params import Params
 
 logger = Logger()
 config = Config()
-params = Params()
+params_cls = Params()
 
 class OuterCVRunner:
-    def __init__(self, run_name: str, model_cls: Callable[[str, str, dict], Model], params: dict):
+    def __init__(self, run_name: str, model_cls: None, params: None):
         """
         コンストラクタ
 
@@ -66,16 +65,44 @@ class OuterCVRunner:
         if is_validation:
             # 学習データ・バリデーションデータをセットする
             tr_idx, tu_idx, va_idx = self.load_index_fold_inner(i_fold)
-            tr_x, tr_y, tr_g = train_x.iloc[tr_idx], train_y.iloc[tr_idx], train_group.iloc[tr_idx]
-            tu_x, tu_y, tu_g = train_x.iloc[tu_idx], train_y.iloc[tu_idx], train_group.iloc[tu_idx]
-            va_x, va_y, va_g = train_x.iloc[va_idx], train_y.iloc[va_idx], train_group.iloc[va_idx]
+            if config.group_column is None:
+                tr_x, tr_y = train_x.iloc[tr_idx], train_y.iloc[tr_idx]
+                tu_x, tu_y = train_x.iloc[tu_idx], train_y.iloc[tu_idx]
+                va_x, va_y = train_x.iloc[va_idx], train_y.iloc[va_idx]
+            else:
+                tr_x, tr_y, tr_g = train_x.iloc[tr_idx], train_y.iloc[tr_idx], train_group.iloc[tr_idx]
+                tu_x, tu_y, tu_g = train_x.iloc[tu_idx], train_y.iloc[tu_idx], train_group.iloc[tu_idx]
+                va_x, va_y, va_g = train_x.iloc[va_idx], train_y.iloc[va_idx], train_group.iloc[va_idx]
 
             # ハイパーパラメータのチューニングを行う
-            # inner_runner = InnerCVRunner(self.model_cls)
-            # best_params = inner_runner.parameter_tuning(tu_x, tu_y, tu_g, n_trials=100)
+            if config.group_column is None:
+                inner_runner = InnerCVRunner()
+                best_params = inner_runner.parameter_tuning(tu_x, tu_y, None, n_trials=10)
+            else:
+                inner_runner = InnerCVRunner()
+                best_params = inner_runner.parameter_tuning(tu_x, tu_y, tu_g, n_trials=100)
 
             # 学習を行う
-            model = self.build_model(is_pipeline=False, i_fold=i_fold, params=best_params)
+            # model = self.build_model(is_pipeline=False, i_fold=i_fold, params=best_params)
+            params_dict = {
+                'lightgbm': {},
+                'xgboost': {},
+                'catboost': {}
+            }
+            # params_dict['lightgbm'] = params_cls.lgb_params
+            # params_dict['xgboost'] = params_cls.xgb_params
+            # params_dict['catboost'] = params_cls.cat_params
+            
+            for param, value in best_params.items():
+                # プレフィックスに応じてパラメータを振り分け
+                if param.startswith('lgb_'):
+                    params_dict['lightgbm'][param.replace('lgb_', '')] = value
+                elif param.startswith('xgb_'):
+                    params_dict['xgboost'][param.replace('xgb_', '')] = value
+                elif param.startswith('cat_'):
+                    params_dict['catboost'][param.replace('cat_', '')] = value
+
+            model = self.build_model(is_pipeline=False, i_fold=i_fold, params_dict=params_dict)
             model.fit(tr_x, tr_y)
 
             # 学習データ・バリデーションデータへの予測・評価を行う
@@ -96,7 +123,7 @@ class OuterCVRunner:
             cv_results['va_y'].append(tr_y)
             cv_results['tr_y_pred'].append(tr_y_pred)
             cv_results['va_y_pred'].append(va_y_pred)
-            cv_results['params'].append(best_params)
+            # cv_results['params'].append(best_params)
 
             # モデル、インデックス、予測値、評価を返す
             return model, cv_results
@@ -114,9 +141,6 @@ class OuterCVRunner:
         """
         logger.info(f'{self.run_name} - start training outer cv')
 
-        va_idxes = []
-        va_preds = []
-        scores = []
         cv_results = {
             'tr_idx': [],       # 各foldの学習データのインデックス
             'tu_idx': [],       # 各foldのチューニングデータのインデックス
@@ -129,7 +153,7 @@ class OuterCVRunner:
             'tr_y': [],           # 各foldの学習データに対する予測値
             'va_y': [],           # 各foldの学習データの正解値
             'tr_y_pred': [],           # 各foldの検証データに対する予測値
-            'va_y_true': [],           # 各foldの検証データの正解値
+            'va_y_pred': [],           # 各foldの検証データの正解値
             'params': []            # 各foldのモデルのハイパーパラメータ
         }
 
@@ -138,10 +162,10 @@ class OuterCVRunner:
             # 学習を行う
             logger.info(f'{self.run_name} fold {i_fold} - start training')
             model, cv_results = self.train_fold(i_fold, cv_results)
-            logger.info(f'{self.run_name} fold {i_fold} - end training - score {cv_results['va_rmse'][i_fold]}')
+            logger.info(f'{self.run_name} fold {i_fold} - end training - score {cv_results["va_rmse"][i_fold]}')
 
             # モデルを保存する
-            model.save_model()
+            # model.save_model()
         
         # 各foldの結果をまとめる
         # va_idxes = np.concatenate(va_idxes)
@@ -149,13 +173,13 @@ class OuterCVRunner:
         # preds = np.concatenate(preds, axis=0)
         # preds = preds[order]
 
-        logger.info(f'{self.run_name} - end training outer cv - score {np.mean(cv_results['va_rmse'])}')
+        logger.info(f'{self.run_name} - end training outer cv - score {np.mean(cv_results["va_rmse"])}')
 
         # 予測結果の保存
         # Util.dump(preds, f'../model/{self.run_name}/pred/train.pkl')
 
         # 評価結果の保存
-        logger.result_scores(self.run_name, scores)
+        logger.result_scores(self.run_name, cv_results['va_rmse'])
 
     def run_predict_cv(self) -> None:
         """
@@ -221,7 +245,7 @@ class OuterCVRunner:
 
         logger.info(f'{self.run_name} - end prediction all')
 
-    def build_model(self, is_pipeline: bool, i_fold: Union[int, str], params: dict) -> Union[Model, Pipeline]:
+    def build_model(self, is_pipeline: bool, i_fold: Union[int, str], params_dict: dict):
         """
         クロスバリデーションでのfoldを指定して、モデルの作成を行う
 
@@ -233,9 +257,9 @@ class OuterCVRunner:
         # ラン名、fold、モデルのクラスからモデルを作成する
         if is_pipeline:
             # model = self.build_pipeline(self.run_name, fold_name, params)
-            lgb_model = LGBMRegressor(params.lgb_params, random_state=config.cv_seed, verbose=-1, n_estimators=300)
-            xgb_model = XGBRegressor(params.xgb_params)
-            cat_model = CatBoostRegressor(params.cat_params)
+            lgb_model = LGBMRegressor(**params_dict['lightgbm'], random_state=config.cv_seed, verbose=-1, n_estimators=300)
+            xgb_model = XGBRegressor(**params_dict['xgboost'])
+            cat_model = CatBoostRegressor(**params_dict['catboost'])
 
             voting_model = VotingRegressor(
                 estimators=[
@@ -253,9 +277,9 @@ class OuterCVRunner:
             return pipeline
         else:
             # model = self.model_cls(self.run_name, fold_name, params)
-            lgb_model = LGBMRegressor(params.lgb_params, random_state=config.cv_seed, verbose=-1, n_estimators=300)
-            xgb_model = XGBRegressor(params.xgb_params)
-            cat_model = CatBoostRegressor(params.cat_params)
+            lgb_model = LGBMRegressor(**params_dict['lightgbm'], random_state=config.cv_seed, verbose=-1, n_estimators=300)
+            xgb_model = XGBRegressor(**params_dict['xgboost'])
+            cat_model = CatBoostRegressor(**params_dict['catboost'])
 
             voting_model = VotingRegressor(
                 estimators=[
@@ -279,15 +303,36 @@ class OuterCVRunner:
             x_train = pd.read_csv(config.train_preprocessed_file_path).drop(config.target_column, axis=1)
         elif config.train_file_path.split('.')[-1] == 'excel':
             x_train = pd.read_excel(config.train_preprocessed_file_path).drop(config.target_column, axis=1)
+        elif config.train_file_path.split('.')[-1] == 'parquet':
+            x_train = pd.read_parquet(config.train_preprocessed_file_path).drop(config.target_column, axis=1)
         
+        # int -> float -> objectの順で変換を試行
+        for column in x_train.columns:
+            col_data = x_train[column]
+            
+            # Try converting to integer
+            try:
+                x_train[column] = col_data.astype(int)
+            except ValueError:
+                # If integer conversion fails, try converting to float
+                try:
+                    x_train[column] = col_data.astype(float)
+                except ValueError:
+                    # If float conversion fails, keep as object
+                    x_train[column] = col_data.astype(object)
+
         # object型のカラムをcategory型に変換
         for col in x_train.select_dtypes(include=['object']).columns:
             x_train[col] = x_train[col].astype('category')
 
         # group_columnをcategory型に変換
-        x_train[config.group_column] = x_train[config.group_column].astype(str)
+        if config.group_column is not None:
+            x_train[config.group_column] = x_train[config.group_column].astype(str)
 
         self.dtype_dict = x_train.dtypes.to_dict()
+
+        # 特殊文字を置き換えるコード例
+        x_train.columns = x_train.columns.str.replace('"', '').str.replace("'", "").str.replace('-', '_').str.replace(' ', '').str.replace(',', '_').str.replace('.', '')
             
         return x_train
     
@@ -304,6 +349,8 @@ class OuterCVRunner:
             y_train = pd.read_csv(config.train_preprocessed_file_path)[config.target_column]
         elif config.train_file_path.split('.')[-1] == 'excel':
             y_train = pd.read_excel(config.train_preprocessed_file_path)[config.target_column]
+        elif config.train_file_path.split('.')[-1] == 'parquet':
+            y_train = pd.read_parquet(config.train_preprocessed_file_path)[config.target_column]
 
         return y_train
     
@@ -316,26 +363,28 @@ class OuterCVRunner:
         # テストデータを読み込む
         if config.test_preprocessed_file_path.split('.')[-1] == 'pkl' or config.test_preprocessed_file_path.split('.')[-1] == 'pickle':
             x_test = pd.read_pickle(config.test_preprocessed_file_path)
-            # 訓練データのデータ型に合わせる
-            for column, dtype in self.dtype_dict.items():
-                if column in x_test.columns:
-                    x_test[column] = x_test[column].astype(dtype)
-        
         elif config.test_preprocessed_file_path.split('.')[-1] == 'csv':
             x_test = pd.read_csv(config.test_preprocessed_file_path, dtype=self.dtype_dict)
         elif config.test_preprocessed_file_path.split('.')[-1] == 'excel':
             x_test = pd.read_excel(config.test_preprocessed_file_path)
-            # 訓練データのデータ型に合わせる
-            for column, dtype in self.dtype_dict.items():
-                if column in x_test.columns:
-                    x_test[column] = x_test[column].astype(dtype)
+        elif config.test_preprocessed_file_path.split('.')[-1] == 'parquet':
+            x_test = pd.read_parquet(config.test_preprocessed_file_path)
+
+        # 訓練データのデータ型に合わせる
+        for column, dtype in self.dtype_dict.items():
+            if column in x_test.columns:
+                x_test[column] = x_test[column].astype(dtype)
         
         # object型のカラムをcategory型に変換
         for col in x_test.select_dtypes(include=['object']).columns:
             x_test[col] = x_test[col].astype('category')
 
         # group_columnをcategory型に変換
-        x_test[config.group_column] = x_test[config.group_column].astype(str)
+        if config.group_column is not None:
+            x_test[config.group_column] = x_test[config.group_column].astype(str)
+
+        # 特殊文字を置き換えるコード例
+        x_test.columns = x_test.columns.str.replace('"', '').str.replace("'", "").str.replace('-', '_').str.replace(' ', '').str.replace(',', '_').str.replace('.', '')
 
         return x_test
 
@@ -367,7 +416,7 @@ class OuterCVRunner:
         train_x = self.load_x_train()
         train_y = self.load_y_train()
 
-        if config.group_column == '':
+        if config.group_column is None:
             # tr+tuとvaの分割
             kfold = KFold(n_splits=self.n_fold, shuffle=True, random_state=config.cv_seed)
             trtu_idx, va_idx = list(kfold.split(train_x, train_y))[i_fold]
