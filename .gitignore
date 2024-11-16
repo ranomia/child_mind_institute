@@ -3,3 +3,6 @@ child_mind_institute.code-workspace
 
 # dataファイルを無視する
 data
+
+# .vscodeフォルダ下を無視する
+.vscode/
