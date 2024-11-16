@@ -153,6 +153,8 @@ class OuterCVRunner:
             'va_rmse': [],       # 各foldの検証データに対するRMSE
             'tr_mae': [],        # 各foldの学習データに対するMAE
             'va_mae': [],        # 各foldの検証データに対するMAE
+            'tr_qwk': [],        # 各foldの学習データに対するquadratic weighted kappa
+            'va_qwk': [],        # 各foldの検証データに対するquadratic weighted kappa
             'tr_y': [],           # 各foldの学習データに対する予測値
             'va_y': [],           # 各foldの学習データの正解値
             'tr_y_pred': [],           # 各foldの検証データに対する予測値
