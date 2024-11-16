@@ -3,7 +3,7 @@ import pandas as pd
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import mean_squared_error
-from sklearn.model_selection import KFold
+from sklearn.model_selection import KFold, StratifiedKFold
 import torch
 import optuna
 from typing import Callable, Union
@@ -89,7 +89,7 @@ class InnerCVRunner:
         study = optuna.create_study(direction='minimize', sampler=optuna.samplers.TPESampler(seed=self.seed))
 
         if config.group_column is None:
-            kfold = KFold(n_splits=self.n_splits, shuffle=True, random_state=config.tuning_seed)
+            kfold = StratifiedKFold(n_splits=self.n_splits, shuffle=True, random_state=config.tuning_seed)
             for i_fold, (tr_idx, va_idx) in enumerate(kfold.split(all_x, all_y)):
                 tr_x, tr_y = all_x.iloc[tr_idx], all_y.iloc[tr_idx]
                 va_x, va_y = all_x.iloc[va_idx], all_y.iloc[va_idx]
