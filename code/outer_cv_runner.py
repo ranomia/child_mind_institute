@@ -19,6 +19,7 @@ from inner_cv_runner import InnerCVRunner
 from util import Logger, Util, ShuffledGroupKFold
 from config import Config
 from params import Params
+from metric import quadratic_weighted_kappa
 
 logger = Logger()
 config = Config()
@@ -114,6 +115,8 @@ class OuterCVRunner:
             cv_results['va_rmse'].append(root_mean_squared_error(va_y, va_y_pred))
             cv_results['tr_mae'].append(mean_absolute_error(tr_y, tr_y_pred))
             cv_results['va_mae'].append(mean_absolute_error(va_y, va_y_pred))
+            cv_results['tr_qwk'].append(quadratic_weighted_kappa(tr_y, tr_y_pred.round(0).astype(int)))
+            cv_results['va_qwk'].append(quadratic_weighted_kappa(va_y, va_y_pred.round(0).astype(int)))
             
             # 実験条件・結果の保存
             cv_results['tr_idx'].append(tr_idx)
@@ -174,6 +177,8 @@ class OuterCVRunner:
         # preds = preds[order]
 
         logger.info(f'{self.run_name} - end training outer cv - score {np.mean(cv_results["va_rmse"])}')
+        logger.info(f'qwk tr score {cv_results["tr_qwk"]}')
+        logger.info(f'qwk va score {cv_results["va_qwk"]}')
 
         # 予測結果の保存
         # Util.dump(preds, f'../model/{self.run_name}/pred/train.pkl')
