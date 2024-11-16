@@ -28,33 +28,33 @@ class InnerCVRunner:
 
     def objective_lgb(self, trial, tr_x: pd.DataFrame, tr_y: pd.Series, va_x: pd.DataFrame, va_y: pd.Series) -> float:
         lgb_params_range = {
-            'learning_rate': trial.suggest_float('lgb_learning_rate', 0.01, 0.1, log=True),
-            'max_depth': trial.suggest_int('lgb_max_depth', 3, 15),
-            'num_leaves': trial.suggest_int('lgb_num_leaves', 31, 512),
-            'min_data_in_leaf': trial.suggest_int('lgb_min_data_in_leaf', 1, 50),
-            'feature_fraction': trial.suggest_float('lgb_feature_fraction', 0.1, 1.0),
-            'bagging_fraction': trial.suggest_float('lgb_bagging_fraction', 0.1, 1.0),
+            'learning_rate': trial.suggest_float('lgb_learning_rate', 0.01, 0.05, log=True),
+            'max_depth': trial.suggest_int('lgb_max_depth', 3, 10),
+            'num_leaves': trial.suggest_int('lgb_num_leaves', 31, 256),
+            'min_data_in_leaf': trial.suggest_int('lgb_min_data_in_leaf', 20, 100),
+            'feature_fraction': trial.suggest_float('lgb_feature_fraction', 0.5, 0.8),
+            'bagging_fraction': trial.suggest_float('lgb_bagging_fraction', 0.5, 0.8),
             'bagging_freq': trial.suggest_int('lgb_bagging_freq', 1, 7),
-            'lambda_l1': trial.suggest_float('lgb_lambda_l1', 0, 50),
-            'lambda_l2': trial.suggest_float('lgb_lambda_l2', 0, 50)
+            'lambda_l1': trial.suggest_float('lgb_lambda_l1', 0, 100),
+            'lambda_l2': trial.suggest_float('lgb_lambda_l2', 0, 100)
             # 'device': 'gpu'
         }
 
         xgb_params_range = {
             'learning_rate': trial.suggest_float('xgb_learning_rate', 0.01, 0.3, log=True),
-            'max_depth': trial.suggest_int('xgb_max_depth', 3, 10),
+            'max_depth': trial.suggest_int('xgb_max_depth', 3, 8),
             'n_estimators': trial.suggest_int('xgb_n_estimators', 100, 500),
-            'subsample': trial.suggest_float('xgb_subsample', 0.5, 1.0),
-            'colsample_bytree': trial.suggest_float('xgb_colsample_bytree', 0.5, 1.0),
-            'reg_alpha': trial.suggest_float('xgb_reg_alpha', 0, 10),
-            'reg_lambda': trial.suggest_float('xgb_reg_lambda', 0, 10),
+            'subsample': trial.suggest_float('xgb_subsample', 0.5, 0.8),
+            'colsample_bytree': trial.suggest_float('xgb_colsample_bytree', 0.5, 0.8),
+            'reg_alpha': trial.suggest_float('xgb_reg_alpha', 1, 10),
+            'reg_lambda': trial.suggest_float('xgb_reg_lambda', 1, 10),
             'random_state': config.cv_seed
             # 'tree_method': 'gpu_hist',
         }
     
         cat_params_range = {
             'learning_rate': trial.suggest_float('cat_learning_rate', 0.01, 0.3, log=True),
-            'depth': trial.suggest_int('cat_depth', 2, 10),
+            'depth': trial.suggest_int('cat_depth', 3, 8),
             'iterations': trial.suggest_int('cat_iterations', 100, 500),
             'l2_leaf_reg': trial.suggest_float('cat_l2_leaf_reg', 0, 10),
             'random_seed': config.cv_seed,
