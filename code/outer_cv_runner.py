@@ -4,7 +4,7 @@ import os
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import root_mean_squared_error, mean_absolute_error
-from sklearn.model_selection import KFold
+from sklearn.model_selection import KFold, StratifiedKFold
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import VotingRegressor
 from sklearn.base import clone
@@ -406,7 +406,7 @@ class OuterCVRunner:
         train_y = self.load_y_train()
 
         if config.group_column == '':
-            kfold = KFold(n_splits=self.n_fold, shuffle=True, random_state=config.cv_seed)
+            kfold = StratifiedKFold(n_splits=self.n_fold, shuffle=True, random_state=config.cv_seed)
             idx_thisfold = list(kfold.split(train_x, train_y))[i_fold]
         else:
             kfold = ShuffledGroupKFold(n_splits=self.n_fold, shuffle=True, random_state=config.cv_seed)
@@ -425,7 +425,7 @@ class OuterCVRunner:
 
         if config.group_column is None:
             # tr+tuとvaの分割
-            kfold = KFold(n_splits=self.n_fold, shuffle=True, random_state=config.cv_seed)
+            kfold = StratifiedKFold(n_splits=self.n_fold, shuffle=True, random_state=config.cv_seed)
             trtu_idx, va_idx = list(kfold.split(train_x, train_y))[i_fold]
             # trとtuの分割
             tr_idx, tu_idx = train_test_split(trtu_idx, test_size=0.2, random_state=55)
