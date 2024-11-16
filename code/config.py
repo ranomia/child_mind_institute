@@ -10,10 +10,8 @@ class Config:
         self._cv_seed = 150
         self._train_file_path = '../data/input/train.csv'
         self._test_file_path = '../data/input/test.csv'
-        # self._train_preprocessed_file_path = '../data/intermediate/train_preprocessed.pickle'
-        # self._test_preprocessed_file_path = '../data/intermediate/test_preprocessed.pickle'
-        self._train_preprocessed_file_path = '../data/input/train.csv'
-        self._test_preprocessed_file_path = '../data/input/test.csv'
+        self._train_preprocessed_file_path = '../data/intermediate/train.pickle'
+        self._test_preprocessed_file_path = '../data/intermediate/test.pickle'
         self._target_column = 'sii'
         self._group_column = None # group無の場合はNoneを指定
 
