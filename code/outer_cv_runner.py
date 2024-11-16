@@ -132,7 +132,7 @@ class OuterCVRunner:
             return model, cv_results
         else:
             # 学習データ全てで学習を行う
-            model_pipe = self.build_model(is_pipeline=True, i_fold=i_fold, params=self.params)
+            model_pipe = self.build_model(is_pipeline=False, i_fold=i_fold, params=self.params)
             model_pipe.train_model(train_x, train_y)
 
             # モデルを返す
