@@ -299,11 +299,11 @@ class OuterCVRunner:
         # 学習データを読み込む
         if config.train_preprocessed_file_path.split('.')[-1] == 'pkl' or config.train_preprocessed_file_path.split('.')[-1] == 'pickle':
             x_train = pd.read_pickle(config.train_preprocessed_file_path).drop(config.target_column, axis=1)
-        elif config.train_file_path.split('.')[-1] == 'csv':
+        elif config.train_preprocessed_file_path.split('.')[-1] == 'csv':
             x_train = pd.read_csv(config.train_preprocessed_file_path).drop(config.target_column, axis=1)
-        elif config.train_file_path.split('.')[-1] == 'excel':
+        elif config.train_preprocessed_file_path.split('.')[-1] == 'excel':
             x_train = pd.read_excel(config.train_preprocessed_file_path).drop(config.target_column, axis=1)
-        elif config.train_file_path.split('.')[-1] == 'parquet':
+        elif config.train_preprocessed_file_path.split('.')[-1] == 'parquet':
             x_train = pd.read_parquet(config.train_preprocessed_file_path).drop(config.target_column, axis=1)
         
         # int -> float -> objectの順で変換を試行
@@ -345,11 +345,11 @@ class OuterCVRunner:
         # 学習データを読み込む
         if config.train_preprocessed_file_path.split('.')[-1] == 'pkl' or config.train_preprocessed_file_path.split('.')[-1] == 'pickle':
             y_train = pd.read_pickle(config.train_preprocessed_file_path)[config.target_column]
-        elif config.train_file_path.split('.')[-1] == 'csv':
+        elif config.train_preprocessed_file_path.split('.')[-1] == 'csv':
             y_train = pd.read_csv(config.train_preprocessed_file_path)[config.target_column]
-        elif config.train_file_path.split('.')[-1] == 'excel':
+        elif config.train_preprocessed_file_path.split('.')[-1] == 'excel':
             y_train = pd.read_excel(config.train_preprocessed_file_path)[config.target_column]
-        elif config.train_file_path.split('.')[-1] == 'parquet':
+        elif config.train_preprocessed_file_path.split('.')[-1] == 'parquet':
             y_train = pd.read_parquet(config.train_preprocessed_file_path)[config.target_column]
 
         return y_train
