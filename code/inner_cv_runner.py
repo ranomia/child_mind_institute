@@ -16,6 +16,7 @@ from catboost import CatBoostRegressor
 
 from config import Config
 from util import ShuffledGroupKFold
+from metric import quadratic_weighted_kappa
 
 config = Config()
 
@@ -76,9 +77,10 @@ class InnerCVRunner:
         voting_model.fit(tr_x, tr_y)
         va_y_pred = voting_model.predict(va_x)
         
-        rmse = mean_squared_error(va_y, va_y_pred, squared=False)
+        # rmse = mean_squared_error(va_y, va_y_pred, squared=False)
+        qwk = quadratic_weighted_kappa(va_y.round().astype(int), va_y_pred.round().astype(int))
 
-        return rmse
+        return -qwk
     
     def parameter_tuning(self, all_x: pd.DataFrame, all_y: pd.Series, all_group: pd.Series, n_trials: int = 100):
         rmse_score_list = []
