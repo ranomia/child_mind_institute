@@ -9,6 +9,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.ensemble import VotingRegressor
 from sklearn.base import clone
 from sklearn.impute import SimpleImputer
+import lightgbm as lgb
 from lightgbm import LGBMRegressor
 from xgboost import XGBRegressor
 from catboost import CatBoostRegressor
@@ -94,7 +95,16 @@ class OuterCVRunner:
                     params_dict[model_type][param_name.replace(model_type+'_', '')] = param_value
 
             model = self.build_model(is_pipeline=False, i_fold=i_fold, params_dict=params_dict)
-            model.fit(tr_x, tr_y)
+            # model.fit(tr_x, tr_y)
+            model.fit(
+                 tr_x
+                ,tr_y
+                ,eval_set=[(va_x, va_y)]
+                ,eval_metric=lambda y_true, y_pred: ('qwk', quadratic_weighted_kappa(y_true, y_pred), True)
+                ,callbacks=[
+                    lgb.early_stopping(stopping_rounds=50, verbose=False)
+                ]
+            )
 
             # 学習データ・バリデーションデータへの予測・評価を行う
             tr_y_pred = model.predict(tr_x)
@@ -255,37 +265,18 @@ class OuterCVRunner:
         if is_pipeline:
             # model = self.build_pipeline(self.run_name, fold_name, params)
             lgb_model = LGBMRegressor(**params_dict['lightgbm'], random_state=config.cv_seed, verbose=-1, n_estimators=300)
-            xgb_model = XGBRegressor(**params_dict['xgboost'])
-            cat_model = CatBoostRegressor(**params_dict['catboost'])
-
-            voting_model = VotingRegressor(
-                estimators=[
-                     ('lightgbm', lgb_model)
-                    ,('xgboost', xgb_model)
-                    ,('catboost', cat_model)
-                ]
-            )
 
             pipeline = Pipeline([
                 ('imputer', SimpleImputer(strategy='mean')),
                 ('scaler', StandardScaler()),
-                ('model', clone(voting_model))
+                ('model', clone(lgb_model))
             ])
             return pipeline
         else:
             # model = self.model_cls(self.run_name, fold_name, params)
             lgb_model = LGBMRegressor(**params_dict['lightgbm'], random_state=config.cv_seed, verbose=-1, n_estimators=300)
-            xgb_model = XGBRegressor(**params_dict['xgboost'])
-            cat_model = CatBoostRegressor(**params_dict['catboost'])
 
-            voting_model = VotingRegressor(
-                estimators=[
-                     ('lightgbm', lgb_model)
-                    ,('xgboost', xgb_model)
-                    ,('catboost', cat_model)
-                ]
-            )
-            return voting_model
+            return lgb_model
     
     def load_x_train(self) -> pd.DataFrame:
         """

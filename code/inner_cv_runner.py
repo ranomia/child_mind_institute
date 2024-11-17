@@ -10,6 +10,7 @@ from typing import Callable, Union
 from sklearn.ensemble import VotingRegressor
 from sklearn.base import clone
 from sklearn.impute import SimpleImputer
+import lightgbm as lgb
 from lightgbm import LGBMRegressor
 from xgboost import XGBRegressor
 from catboost import CatBoostRegressor
@@ -44,34 +45,17 @@ class InnerCVRunner:
                 # 'device': 'gpu'
             }
             model = LGBMRegressor(**params_range)
-        elif model_type == 'xgboost':
-            params_range = {
-                'learning_rate': trial.suggest_float('xgboost_learning_rate', 0.01, 0.3, log=True),
-                'max_depth': trial.suggest_int('xgboost_max_depth', 3, 8),
-                'n_estimators': trial.suggest_int('xgboost_n_estimators', 100, 500),
-                'subsample': trial.suggest_float('xgboost_subsample', 0.5, 0.8),
-                'colsample_bytree': trial.suggest_float('xgboost_colsample_bytree', 0.5, 0.8),
-                'reg_alpha': trial.suggest_float('xgboost_reg_alpha', 1, 10),
-                'reg_lambda': trial.suggest_float('xgboost_reg_lambda', 1, 10),
-                'random_state': self.seed
-                # 'tree_method': 'gpu_hist',
-            }
-            model = XGBRegressor(**params_range)
-        elif model_type == 'catboost':
-            params_range = {
-                'learning_rate': trial.suggest_float('catboost_learning_rate', 0.01, 0.3, log=True),
-                'depth': trial.suggest_int('catboost_depth', 3, 8),
-                'iterations': trial.suggest_int('catboost_iterations', 100, 500),
-                'l2_leaf_reg': trial.suggest_float('catboost_l2_leaf_reg', 0, 10),
-                'random_seed': self.seed,
-                'verbose': 0
-                # 'task_type': 'GPU'
-            }
-            model = CatBoostRegressor(**params_range)
-        else:
-            raise ValueError(f"Unsupported model type: {model_type}")
+            model.fit(
+                 tr_x
+                ,tr_y
+                ,eval_set=[(va_x, va_y)]
+                ,eval_metric=lambda y_true, y_pred: ('qwk', quadratic_weighted_kappa(y_true, y_pred), True)
+                ,callbacks=[
+                    lgb.early_stopping(stopping_rounds=50, verbose=False)
+                ]
+            )
 
-        model.fit(tr_x, tr_y)
+
         va_y_pred = model.predict(va_x)
         
         # rmse = mean_squared_error(va_y, va_y_pred, squared=False)
@@ -80,7 +64,7 @@ class InnerCVRunner:
         return -qwk
     
     def parameter_tuning(self, all_x: pd.DataFrame, all_y: pd.Series, all_group: pd.Series, n_trials: int = 100):
-        model_types = ['lightgbm', 'xgboost', 'catboost']
+        model_types = ['lightgbm']
         best_params_all = {}
 
         for model_type in model_types:
