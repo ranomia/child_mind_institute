@@ -26,56 +26,53 @@ class InnerCVRunner:
         self.n_splits = 3
         self.seed = config.tuning_seed
 
-    def objective_lgb(self, trial, tr_x: pd.DataFrame, tr_y: pd.Series, va_x: pd.DataFrame, va_y: pd.Series) -> float:
-        lgb_params_range = {
-            'learning_rate': trial.suggest_float('lgb_learning_rate', 0.01, 0.05, log=True),
-            'max_depth': trial.suggest_int('lgb_max_depth', 3, 10),
-            'num_leaves': trial.suggest_int('lgb_num_leaves', 31, 256),
-            'min_data_in_leaf': trial.suggest_int('lgb_min_data_in_leaf', 20, 100),
-            'feature_fraction': trial.suggest_float('lgb_feature_fraction', 0.5, 0.8),
-            'bagging_fraction': trial.suggest_float('lgb_bagging_fraction', 0.5, 0.8),
-            'bagging_freq': trial.suggest_int('lgb_bagging_freq', 1, 7),
-            'lambda_l1': trial.suggest_float('lgb_lambda_l1', 0, 100),
-            'lambda_l2': trial.suggest_float('lgb_lambda_l2', 0, 100)
-            # 'device': 'gpu'
-        }
+    def objective(self, trial, model_type: str, tr_x: pd.DataFrame, tr_y: pd.Series, va_x: pd.DataFrame, va_y: pd.Series) -> float:
+        if model_type == 'lightgbm':
+            params_range = {
+                'learning_rate': trial.suggest_float('lightgbm_learning_rate', 0.01, 0.05, log=True),
+                'max_depth': trial.suggest_int('lightgbm_max_depth', 3, 10),
+                'num_leaves': trial.suggest_int('lightgbm_num_leaves', 31, 256),
+                'min_data_in_leaf': trial.suggest_int('lightgbm_min_data_in_leaf', 20, 100),
+                'feature_fraction': trial.suggest_float('lightgbm_feature_fraction', 0.5, 0.8),
+                'bagging_fraction': trial.suggest_float('lightgbm_bagging_fraction', 0.5, 0.8),
+                'bagging_freq': trial.suggest_int('lightgbm_bagging_freq', 1, 7),
+                'lambda_l1': trial.suggest_float('lightgbm_lambda_l1', 0, 100),
+                'lambda_l2': trial.suggest_float('lightgbm_lambda_l2', 0, 100),
+                'random_state': self.seed,
+                'verbose': -1,
+                'n_estimators': 300
+                # 'device': 'gpu'
+            }
+            model = LGBMRegressor(**params_range)
+        elif model_type == 'xgboost':
+            params_range = {
+                'learning_rate': trial.suggest_float('xgboost_learning_rate', 0.01, 0.3, log=True),
+                'max_depth': trial.suggest_int('xgboost_max_depth', 3, 8),
+                'n_estimators': trial.suggest_int('xgboost_n_estimators', 100, 500),
+                'subsample': trial.suggest_float('xgboost_subsample', 0.5, 0.8),
+                'colsample_bytree': trial.suggest_float('xgboost_colsample_bytree', 0.5, 0.8),
+                'reg_alpha': trial.suggest_float('xgboost_reg_alpha', 1, 10),
+                'reg_lambda': trial.suggest_float('xgboost_reg_lambda', 1, 10),
+                'random_state': self.seed
+                # 'tree_method': 'gpu_hist',
+            }
+            model = XGBRegressor(**params_range)
+        elif model_type == 'catboost':
+            params_range = {
+                'learning_rate': trial.suggest_float('catboost_learning_rate', 0.01, 0.3, log=True),
+                'depth': trial.suggest_int('catboost_depth', 3, 8),
+                'iterations': trial.suggest_int('catboost_iterations', 100, 500),
+                'l2_leaf_reg': trial.suggest_float('catboost_l2_leaf_reg', 0, 10),
+                'random_seed': self.seed,
+                'verbose': 0
+                # 'task_type': 'GPU'
+            }
+            model = CatBoostRegressor(**params_range)
+        else:
+            raise ValueError(f"Unsupported model type: {model_type}")
 
-        xgb_params_range = {
-            'learning_rate': trial.suggest_float('xgb_learning_rate', 0.01, 0.3, log=True),
-            'max_depth': trial.suggest_int('xgb_max_depth', 3, 8),
-            'n_estimators': trial.suggest_int('xgb_n_estimators', 100, 500),
-            'subsample': trial.suggest_float('xgb_subsample', 0.5, 0.8),
-            'colsample_bytree': trial.suggest_float('xgb_colsample_bytree', 0.5, 0.8),
-            'reg_alpha': trial.suggest_float('xgb_reg_alpha', 1, 10),
-            'reg_lambda': trial.suggest_float('xgb_reg_lambda', 1, 10),
-            'random_state': config.cv_seed
-            # 'tree_method': 'gpu_hist',
-        }
-    
-        cat_params_range = {
-            'learning_rate': trial.suggest_float('cat_learning_rate', 0.01, 0.3, log=True),
-            'depth': trial.suggest_int('cat_depth', 3, 8),
-            'iterations': trial.suggest_int('cat_iterations', 100, 500),
-            'l2_leaf_reg': trial.suggest_float('cat_l2_leaf_reg', 0, 10),
-            'random_seed': config.cv_seed,
-            'verbose': 0
-            # 'task_type': 'GPU'
-        }
-        
-        lgb_model = LGBMRegressor(**lgb_params_range, random_state=config.cv_seed, verbose=-1, n_estimators=300)
-        xgb_model = XGBRegressor(**xgb_params_range)
-        cat_model = CatBoostRegressor(**cat_params_range)
-
-        voting_model = VotingRegressor(
-                estimators=[
-                     ('lightgbm', lgb_model)
-                    ,('xgboost', xgb_model)
-                    ,('catboost', cat_model)
-                ]
-            )
-
-        voting_model.fit(tr_x, tr_y)
-        va_y_pred = voting_model.predict(va_x)
+        model.fit(tr_x, tr_y)
+        va_y_pred = model.predict(va_x)
         
         # rmse = mean_squared_error(va_y, va_y_pred, squared=False)
         qwk = quadratic_weighted_kappa(va_y.round().astype(int), va_y_pred.round().astype(int))
@@ -83,35 +80,44 @@ class InnerCVRunner:
         return -qwk
     
     def parameter_tuning(self, all_x: pd.DataFrame, all_y: pd.Series, all_group: pd.Series, n_trials: int = 100):
-        rmse_score_list = []
-        best_params_list = []
+        model_types = ['lightgbm', 'xgboost', 'catboost']
+        best_params_all = {}
 
-        study = optuna.create_study(direction='minimize', sampler=optuna.samplers.TPESampler(seed=self.seed))
+        for model_type in model_types:
+            score_list = []
+            best_params_list = []
 
-        if config.group_column is None:
-            kfold = StratifiedKFold(n_splits=self.n_splits, shuffle=True, random_state=config.tuning_seed)
-            for i_fold, (tr_idx, va_idx) in enumerate(kfold.split(all_x, all_y)):
-                tr_x, tr_y = all_x.iloc[tr_idx], all_y.iloc[tr_idx]
-                va_x, va_y = all_x.iloc[va_idx], all_y.iloc[va_idx]
+            study = optuna.create_study(direction='minimize', sampler=optuna.samplers.TPESampler(seed=self.seed))
 
-                # Optunaでのハイパーパラメータチューニング
-                study.optimize(lambda trial: self.objective_lgb(trial, tr_x, tr_y, va_x, va_y), n_trials=n_trials)
+            if config.group_column is None:
+                kfold = StratifiedKFold(n_splits=self.n_splits, shuffle=True, random_state=config.tuning_seed)
+                for i_fold, (tr_idx, va_idx) in enumerate(kfold.split(all_x, all_y)):
+                    tr_x, tr_y = all_x.iloc[tr_idx], all_y.iloc[tr_idx]
+                    va_x, va_y = all_x.iloc[va_idx], all_y.iloc[va_idx]
 
-                # 各フォールドのスコアとパラメータを記録
-                rmse_score_list.append(study.best_trial.value)
-                best_params_list.append(study.best_params)
-        else:
-            kfold = ShuffledGroupKFold(n_splits=self.n_splits, shuffle=True, random_state=config.tuning_seed)
-            for i_fold in range(self.n_splits):
-                tr_idx, va_idx = list(kfold.split(all_x, all_y, all_group))[i_fold]
-                tr_x, tr_y = all_x.iloc[tr_idx], all_y.iloc[tr_idx]
-                va_x, va_y = all_x.iloc[va_idx], all_y.iloc[va_idx]
+                    # Optunaでのハイパーパラメータチューニング
+                    study.optimize(lambda trial: self.objective(trial, model_type, tr_x, tr_y, va_x, va_y), n_trials=n_trials)
 
-                study.optimize(lambda trial: self.objective_lgb(trial, tr_x, tr_y, va_x, va_y), n_trials=n_trials)
-                rmse_score_list.append(study.best_trial.value)
-                best_params_list.append(study.best_params)
-        
-        best_trial = np.argmin(rmse_score_list)
-        best_params = best_params_list[best_trial]
+                    # 各フォールドのスコアとパラメータを記録
+                    score_list.append(study.best_trial.value)
+                    best_params_list.append(study.best_params)
+                
+                # 最適なパラメータを保存
+                best_index = np.argmin(score_list)
+                best_params_all[model_type] = best_params_list[best_index]
+            else:
+                kfold = ShuffledGroupKFold(n_splits=self.n_splits, shuffle=True, random_state=config.tuning_seed)
+                for i_fold in range(self.n_splits):
+                    tr_idx, va_idx = list(kfold.split(all_x, all_y, all_group))[i_fold]
+                    tr_x, tr_y = all_x.iloc[tr_idx], all_y.iloc[tr_idx]
+                    va_x, va_y = all_x.iloc[va_idx], all_y.iloc[va_idx]
 
-        return best_params
+                    study.optimize(lambda trial: self.objective(trial, model_type, tr_x, tr_y, va_x, va_y), n_trials=n_trials)
+                    
+                    score_list.append(study.best_trial.value)
+                    best_params_list.append(study.best_params)
+
+                best_index = np.argmin(score_list)
+                best_params_all[model_type] = best_params_list[best_index]
+
+        return best_params_all

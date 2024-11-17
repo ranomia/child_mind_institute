@@ -78,30 +78,20 @@ class OuterCVRunner:
             # ハイパーパラメータのチューニングを行う
             if config.group_column is None:
                 inner_runner = InnerCVRunner()
-                best_params = inner_runner.parameter_tuning(tu_x, tu_y, None, n_trials=10)
+                best_params_dict = inner_runner.parameter_tuning(tu_x, tu_y, None, n_trials=10)
             else:
                 inner_runner = InnerCVRunner()
-                best_params = inner_runner.parameter_tuning(tu_x, tu_y, tu_g, n_trials=100)
-
-            # 学習を行う
-            # model = self.build_model(is_pipeline=False, i_fold=i_fold, params=best_params)
+                best_params_dict = inner_runner.parameter_tuning(tu_x, tu_y, tu_g, n_trials=100)
+            
             params_dict = {
                 'lightgbm': {},
                 'xgboost': {},
                 'catboost': {}
             }
-            # params_dict['lightgbm'] = params_cls.lgb_params
-            # params_dict['xgboost'] = params_cls.xgb_params
-            # params_dict['catboost'] = params_cls.cat_params
-            
-            for param, value in best_params.items():
-                # プレフィックスに応じてパラメータを振り分け
-                if param.startswith('lgb_'):
-                    params_dict['lightgbm'][param.replace('lgb_', '')] = value
-                elif param.startswith('xgb_'):
-                    params_dict['xgboost'][param.replace('xgb_', '')] = value
-                elif param.startswith('cat_'):
-                    params_dict['catboost'][param.replace('cat_', '')] = value
+
+            for model_type in best_params_dict.keys():
+                for param_name, param_value in best_params_dict[model_type].items():
+                    params_dict[model_type][param_name.replace(model_type+'_', '')] = param_value
 
             model = self.build_model(is_pipeline=False, i_fold=i_fold, params_dict=params_dict)
             model.fit(tr_x, tr_y)
