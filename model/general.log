@@ -126,3 +126,13 @@
 [2024-11-17 15:00:27] - lgb fold 0 - start training
 [2024-11-17 15:03:47] - lgb - start training outer cv
 [2024-11-17 15:03:47] - lgb fold 0 - start training
+[2024-11-21 20:20:51] - lgb - start training outer cv
+[2024-11-21 20:20:51] - lgb fold 0 - start training
+[2024-11-21 20:21:51] - lgb - start training outer cv
+[2024-11-21 20:21:51] - lgb fold 0 - start training
+[2024-11-21 20:35:09] - lgb - start training outer cv
+[2024-11-21 20:35:09] - lgb fold 0 - start training
+[2024-11-21 20:37:21] - lgb fold 0 - end training - score 0.5637214213556118
+[2024-11-21 20:37:21] - lgb fold 1 - start training
+[2024-11-21 20:46:20] - lgb - start training outer cv
+[2024-11-21 20:46:20] - lgb fold 0 - start training
