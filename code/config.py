@@ -56,3 +56,8 @@ class Config:
     def group_column(self):
         return self._group_column
     
+    def cv_seed_step_forward(self):
+        self._cv_seed += 1
+    
+    def tuning_seed_step_forward(self):
+        self._tuning_seed += 1
