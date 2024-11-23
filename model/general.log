@@ -181,3 +181,13 @@
 [2024-11-17 16:35:42] - qwk tr score [0.4315686228719553, 0.44419928800225517, 0.4462978914289941]
 [2024-11-17 16:35:42] - qwk va score [0.3959792457682243, 0.37078867948928085, 0.4211358017223781]
 [2024-11-17 16:35:42] - lgb - start prediction outer cv
+[2024-11-21 20:20:51] - lgb - start training outer cv
+[2024-11-21 20:20:51] - lgb fold 0 - start training
+[2024-11-21 20:21:51] - lgb - start training outer cv
+[2024-11-21 20:21:51] - lgb fold 0 - start training
+[2024-11-21 20:35:09] - lgb - start training outer cv
+[2024-11-21 20:35:09] - lgb fold 0 - start training
+[2024-11-21 20:37:21] - lgb fold 0 - end training - score 0.5637214213556118
+[2024-11-21 20:37:21] - lgb fold 1 - start training
+[2024-11-21 20:46:20] - lgb - start training outer cv
+[2024-11-21 20:46:20] - lgb fold 0 - start training

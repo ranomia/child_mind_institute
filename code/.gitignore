@@ -1,2 +1,5 @@
 # catboost_infoフォルダ下を無視する
 catboost_info/
+
+# __pycache__フォルダ下を無視する
+__pycache__/
