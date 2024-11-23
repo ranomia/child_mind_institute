@@ -69,6 +69,7 @@ class InnerCVRunner:
                 # 'tree_method': 'gpu_hist',
             }
             model = XGBRegressor(**params_range)
+            model.fit(tr_x, tr_y)
         elif model_type == 'catboost':
             params_range = {
                 'learning_rate': trial.suggest_float('catboost_learning_rate', 0.001, 0.01, log=True),
@@ -80,10 +81,10 @@ class InnerCVRunner:
                 # 'task_type': 'GPU'
             }
             model = CatBoostRegressor(**params_range)
+            model.fit(tr_x, tr_y)
         else:
             raise ValueError(f"Unsupported model type: {model_type}")
 
-        model.fit(tr_x, tr_y)
         va_y_pred = model.predict(va_x)
         
         # rmse = mean_squared_error(va_y, va_y_pred, squared=False)
