@@ -30,7 +30,7 @@ class InnerCVRunner:
     def objective(self, trial, model_type: str, tr_x: pd.DataFrame, tr_y: pd.Series, va_x: pd.DataFrame, va_y: pd.Series) -> float:
         if model_type == 'lightgbm':
             params_range = {
-                'learning_rate': trial.suggest_float('lightgbm_learning_rate', 0.001, 0.01, log=True),
+                'learning_rate': trial.suggest_float('lightgbm_learning_rate', 0.01, 0.1, log=True),
                 'max_depth': trial.suggest_int('lightgbm_max_depth', 3, 5),
                 'num_leaves': trial.suggest_int('lightgbm_num_leaves', 16, 32),
                 'min_data_in_leaf': trial.suggest_int('lightgbm_min_data_in_leaf', 100, 150),
