@@ -170,7 +170,7 @@ class OuterCVRunner:
             logger.info(f'{self.run_name} fold {i_fold} - end training - score {cv_results["va_rmse"][i_fold]}')
 
             # モデルを保存する
-            # model.save_model()
+            model.booster_.save_model(f'../model/model_{self.run_name}_{i_fold}.txt')
         
         # 各foldの結果をまとめる
         # va_idxes = np.concatenate(va_idxes)
