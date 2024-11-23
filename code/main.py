@@ -7,21 +7,6 @@ from util import Submission
 from config import Config
 
 if __name__ == '__main__':
-    params_lgb = {
-        'objective': 'regression',
-        'metric': 'rmse',
-        'boosting_type': 'gbdt',
-        'learning_rate': 0.01,
-        'num_leaves': 30,
-        'max_depth': 10,
-        'min_data_in_leaf': 20,
-        'feature_fraction': 0.7,
-        'bagging_fraction': 0.7,
-        'bagging_freq': 3,
-        'reg_alpha': 1,
-        'reg_lambda': 1,
-        'num_threads': 4
-    }
 
     # 前処理
     # preprocess = Preprocess()
@@ -35,7 +20,11 @@ if __name__ == '__main__':
     # outer_runner.run_predict_cv()
 
     # lightGBMによる学習・予測
-    outer_runner = OuterCVRunner('lgb', None, None)
-    outer_runner.run_train_cv()
-    outer_runner.run_predict_cv()
+    for run_i in range(10):
+        outer_runner = OuterCVRunner('lgb'+str(run_i), None, None)
+        outer_runner.run_train_cv()
+        # outer_runner.run_predict_cv()
+
+        config.cv_seed_step_forward()
+        config.tuning_seed_step_forward()
     # Submission.create_submission('lgb1')
