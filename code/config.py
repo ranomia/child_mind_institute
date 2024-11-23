@@ -1,4 +1,5 @@
 import os
+import platform
 import matplotlib as mpl
 import pandas as pd
 
@@ -17,12 +18,15 @@ class Config:
 
     @staticmethod
     def set_font():
-        if os.name == 'nt':  # Windows
+        os_name = platform.system()
+        if os_name == 'Windows':  # Windows
             mpl.rcParams['font.family'] = 'BIZ UDGothic'
-        elif os.name == 'posix':  # Linux
+        elif os_name == 'Darwin':  # macOS
+            mpl.rcParams['font.family'] = 'Helvetica'  # Mac用の適切なフォントを指定
+        elif os_name == 'Linux':  # Linux
             mpl.rcParams['font.family'] = 'Noto Sans CJK JP'
         else:
-            raise EnvironmentError('Unsupported OS')
+            raise EnvironmentError(f'Unsupported OS: {os_name}')
             
     @property
     def tuning_seed(self):

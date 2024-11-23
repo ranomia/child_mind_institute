@@ -13,6 +13,7 @@ import lightgbm as lgb
 from lightgbm import LGBMRegressor
 from xgboost import XGBRegressor
 from catboost import CatBoostRegressor
+import matplotlib.pyplot as plt
 
 from typing import Callable, List, Optional, Tuple, Union
 
@@ -99,7 +100,7 @@ class OuterCVRunner:
             model.fit(
                  tr_x
                 ,tr_y
-                ,eval_set=[(va_x, va_y)]
+                ,eval_set=[(tr_x, tr_y), (va_x, va_y)]
                 ,eval_metric=lambda y_true, y_pred: ('qwk', quadratic_weighted_kappa(y_true, y_pred), True)
                 ,callbacks=[
                     lgb.early_stopping(stopping_rounds=50, verbose=False)
@@ -172,6 +173,17 @@ class OuterCVRunner:
             # モデルを保存する
             model.booster_.save_model(f'../model/model_{self.run_name}_{i_fold}.txt')
         
+            # 学習曲線のプロット
+            eval_results = model.evals_result_
+            plt.figure(figsize=(10, 6))
+            plt.plot(eval_results['training']['qwk'], label='Training Loss')
+            plt.plot(eval_results['valid_1']['qwk'], label='Validation Loss')
+            plt.xlabel('Iteration')
+            plt.ylabel('QWK')
+            plt.title('Learning Curve')
+            plt.legend()
+            plt.savefig(f'../model/lr_{self.run_name}_{i_fold}.png')
+
         # 各foldの結果をまとめる
         # va_idxes = np.concatenate(va_idxes)
         # order = np.argsort(va_idxes)
