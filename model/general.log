@@ -126,3 +126,58 @@
 [2024-11-17 15:00:27] - lgb fold 0 - start training
 [2024-11-17 15:03:47] - lgb - start training outer cv
 [2024-11-17 15:03:47] - lgb fold 0 - start training
+[2024-11-17 15:55:07] - lgb - start training outer cv
+[2024-11-17 15:55:07] - lgb fold 0 - start training
+[2024-11-17 15:55:48] - lgb fold 0 - end training - score 0.5453554042242434
+[2024-11-17 15:55:48] - lgb fold 1 - start training
+[2024-11-17 15:56:26] - lgb fold 1 - end training - score 0.5640298087373804
+[2024-11-17 15:56:26] - lgb fold 2 - start training
+[2024-11-17 15:57:14] - lgb fold 2 - end training - score 0.5453953282486302
+[2024-11-17 15:57:14] - lgb - end training outer cv - score 0.5515935137367514
+[2024-11-17 15:57:14] - qwk tr score [0.8826569746173725, 0.9078477972731326, 0.8135264989164845]
+[2024-11-17 15:57:14] - qwk va score [0.5873294032706906, 0.5234570185990561, 0.5526031648420797]
+[2024-11-17 15:57:14] - lgb - start prediction outer cv
+[2024-11-17 15:59:45] - lgb - start training outer cv
+[2024-11-17 15:59:45] - lgb fold 0 - start training
+[2024-11-17 16:00:24] - lgb fold 0 - end training - score 0.5453554042242434
+[2024-11-17 16:00:24] - lgb fold 1 - start training
+[2024-11-17 16:01:03] - lgb fold 1 - end training - score 0.5640298087373804
+[2024-11-17 16:01:03] - lgb fold 2 - start training
+[2024-11-17 16:01:48] - lgb fold 2 - end training - score 0.5453953282486302
+[2024-11-17 16:01:48] - lgb - end training outer cv - score 0.5515935137367514
+[2024-11-17 16:01:48] - qwk tr score [0.8826569746173725, 0.9078477972731326, 0.8135264989164845]
+[2024-11-17 16:01:48] - qwk va score [0.5873294032706906, 0.5234570185990561, 0.5526031648420797]
+[2024-11-17 16:01:48] - lgb - start prediction outer cv
+[2024-11-17 16:07:20] - lgb - start training outer cv
+[2024-11-17 16:07:20] - lgb fold 0 - start training
+[2024-11-17 16:07:47] - lgb fold 0 - end training - score 0.5567724009466375
+[2024-11-17 16:07:47] - lgb fold 1 - start training
+[2024-11-17 16:08:11] - lgb fold 1 - end training - score 0.5756143597506377
+[2024-11-17 16:08:11] - lgb fold 2 - start training
+[2024-11-17 16:08:40] - lgb fold 2 - end training - score 0.5439852958318282
+[2024-11-17 16:08:40] - lgb - end training outer cv - score 0.5587906855097011
+[2024-11-17 16:08:40] - qwk tr score [0.7595414511393821, 0.7216334144257548, 0.8026398915066923]
+[2024-11-17 16:08:40] - qwk va score [0.5257976378066587, 0.5034563250104054, 0.5444260872000224]
+[2024-11-17 16:08:40] - lgb - start prediction outer cv
+[2024-11-17 16:19:17] - lgb - start training outer cv
+[2024-11-17 16:19:17] - lgb fold 0 - start training
+[2024-11-17 16:19:37] - lgb fold 0 - end training - score 0.581930315903548
+[2024-11-17 16:19:37] - lgb fold 1 - start training
+[2024-11-17 16:19:54] - lgb fold 1 - end training - score 0.587219486605429
+[2024-11-17 16:19:54] - lgb fold 2 - start training
+[2024-11-17 16:20:14] - lgb fold 2 - end training - score 0.5787921965246146
+[2024-11-17 16:20:14] - lgb - end training outer cv - score 0.5826473330111972
+[2024-11-17 16:20:14] - qwk tr score [0.5780423942988548, 0.6443462258672285, 0.540256104515527]
+[2024-11-17 16:20:14] - qwk va score [0.4799370807858966, 0.4777172935965033, 0.4691118097710679]
+[2024-11-17 16:20:14] - lgb - start prediction outer cv
+[2024-11-17 16:34:59] - lgb - start training outer cv
+[2024-11-17 16:34:59] - lgb fold 0 - start training
+[2024-11-17 16:35:14] - lgb fold 0 - end training - score 0.6276918522656413
+[2024-11-17 16:35:14] - lgb fold 1 - start training
+[2024-11-17 16:35:27] - lgb fold 1 - end training - score 0.6434237553423676
+[2024-11-17 16:35:27] - lgb fold 2 - start training
+[2024-11-17 16:35:42] - lgb fold 2 - end training - score 0.6239846366889572
+[2024-11-17 16:35:42] - lgb - end training outer cv - score 0.631700081432322
+[2024-11-17 16:35:42] - qwk tr score [0.4315686228719553, 0.44419928800225517, 0.4462978914289941]
+[2024-11-17 16:35:42] - qwk va score [0.3959792457682243, 0.37078867948928085, 0.4211358017223781]
+[2024-11-17 16:35:42] - lgb - start prediction outer cv

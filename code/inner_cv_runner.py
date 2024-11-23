@@ -29,15 +29,15 @@ class InnerCVRunner:
     def objective(self, trial, model_type: str, tr_x: pd.DataFrame, tr_y: pd.Series, va_x: pd.DataFrame, va_y: pd.Series) -> float:
         if model_type == 'lightgbm':
             params_range = {
-                'learning_rate': trial.suggest_float('lightgbm_learning_rate', 0.01, 0.05, log=True),
-                'max_depth': trial.suggest_int('lightgbm_max_depth', 3, 10),
-                'num_leaves': trial.suggest_int('lightgbm_num_leaves', 31, 256),
-                'min_data_in_leaf': trial.suggest_int('lightgbm_min_data_in_leaf', 20, 100),
-                'feature_fraction': trial.suggest_float('lightgbm_feature_fraction', 0.5, 0.8),
-                'bagging_fraction': trial.suggest_float('lightgbm_bagging_fraction', 0.5, 0.8),
-                'bagging_freq': trial.suggest_int('lightgbm_bagging_freq', 1, 7),
-                'lambda_l1': trial.suggest_float('lightgbm_lambda_l1', 0, 100),
-                'lambda_l2': trial.suggest_float('lightgbm_lambda_l2', 0, 100),
+                'learning_rate': trial.suggest_float('lightgbm_learning_rate', 0.001, 0.01, log=True),
+                'max_depth': trial.suggest_int('lightgbm_max_depth', 3, 5),
+                'num_leaves': trial.suggest_int('lightgbm_num_leaves', 16, 32),
+                'min_data_in_leaf': trial.suggest_int('lightgbm_min_data_in_leaf', 100, 150),
+                'feature_fraction': trial.suggest_float('lightgbm_feature_fraction', 0.6, 0.8),
+                'bagging_fraction': trial.suggest_float('lightgbm_bagging_fraction', 0.6, 0.8),
+                'bagging_freq': trial.suggest_int('lightgbm_bagging_freq', 1, 3),
+                'lambda_l1': trial.suggest_float('lightgbm_lambda_l1', 10, 50),
+                'lambda_l2': trial.suggest_float('lightgbm_lambda_l2', 10, 50),
                 'random_state': self.seed,
                 'verbose': -1,
                 'n_estimators': 300
@@ -46,23 +46,23 @@ class InnerCVRunner:
             model = LGBMRegressor(**params_range)
         elif model_type == 'xgboost':
             params_range = {
-                'learning_rate': trial.suggest_float('xgboost_learning_rate', 0.01, 0.3, log=True),
-                'max_depth': trial.suggest_int('xgboost_max_depth', 3, 8),
-                'n_estimators': trial.suggest_int('xgboost_n_estimators', 100, 500),
-                'subsample': trial.suggest_float('xgboost_subsample', 0.5, 0.8),
-                'colsample_bytree': trial.suggest_float('xgboost_colsample_bytree', 0.5, 0.8),
-                'reg_alpha': trial.suggest_float('xgboost_reg_alpha', 1, 10),
-                'reg_lambda': trial.suggest_float('xgboost_reg_lambda', 1, 10),
+                'learning_rate': trial.suggest_float('xgboost_learning_rate', 0.001, 0.01, log=True),
+                'max_depth': trial.suggest_int('xgboost_max_depth', 3, 5),
+                'n_estimators': trial.suggest_int('xgboost_n_estimators', 100, 200),
+                'subsample': trial.suggest_float('xgboost_subsample', 0.6, 0.8),
+                'colsample_bytree': trial.suggest_float('xgboost_colsample_bytree', 0.6, 0.8),
+                'reg_alpha': trial.suggest_float('xgboost_reg_alpha', 10, 30),
+                'reg_lambda': trial.suggest_float('xgboost_reg_lambda', 10, 30),
                 'random_state': self.seed
                 # 'tree_method': 'gpu_hist',
             }
             model = XGBRegressor(**params_range)
         elif model_type == 'catboost':
             params_range = {
-                'learning_rate': trial.suggest_float('catboost_learning_rate', 0.01, 0.3, log=True),
-                'depth': trial.suggest_int('catboost_depth', 3, 8),
-                'iterations': trial.suggest_int('catboost_iterations', 100, 500),
-                'l2_leaf_reg': trial.suggest_float('catboost_l2_leaf_reg', 0, 10),
+                'learning_rate': trial.suggest_float('catboost_learning_rate', 0.001, 0.01, log=True),
+                'depth': trial.suggest_int('catboost_depth', 3, 5),
+                'iterations': trial.suggest_int('catboost_iterations', 100, 150),
+                'l2_leaf_reg': trial.suggest_float('catboost_l2_leaf_reg', 10, 20),
                 'random_seed': self.seed,
                 'verbose': 0
                 # 'task_type': 'GPU'
