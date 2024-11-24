@@ -20,7 +20,7 @@ if __name__ == '__main__':
     # outer_runner.run_predict_cv()
 
     # lightGBMによる学習・予測
-    for run_i in range(2):
+    for run_i in range(100):
         outer_runner = OuterCVRunner('lgb'+str(run_i), None, None, config.cv_seed, config.tuning_seed)
         outer_runner.run_train_cv()
         # outer_runner.run_predict_cv()

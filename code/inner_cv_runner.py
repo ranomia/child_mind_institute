@@ -30,18 +30,17 @@ class InnerCVRunner:
     def objective(self, trial, model_type: str, tr_x: pd.DataFrame, tr_y: pd.Series, va_x: pd.DataFrame, va_y: pd.Series) -> float:
         if model_type == 'lightgbm':
             params_range = {
-                'learning_rate': trial.suggest_float('lightgbm_learning_rate', 0.01, 0.05, log=True),
-                'max_depth': trial.suggest_int('lightgbm_max_depth', 3, 5),
-                'num_leaves': trial.suggest_int('lightgbm_num_leaves', 16, 32),
-                'min_data_in_leaf': trial.suggest_int('lightgbm_min_data_in_leaf', 100, 150),
-                'feature_fraction': trial.suggest_float('lightgbm_feature_fraction', 0.6, 0.8),
-                'bagging_fraction': trial.suggest_float('lightgbm_bagging_fraction', 0.6, 0.8),
-                'bagging_freq': trial.suggest_int('lightgbm_bagging_freq', 1, 3),
-                'lambda_l1': trial.suggest_float('lightgbm_lambda_l1', 10, 50),
-                'lambda_l2': trial.suggest_float('lightgbm_lambda_l2', 10, 50),
+                'learning_rate': trial.suggest_float('lightgbm_learning_rate', 0.01, 0.1, log=True),
+                'reg_alpha': trial.suggest_float('lightgbm_reg_alpha', 0.0001, 1, log=True),
+                'reg_lambda': trial.suggest_float('lightgbm_reg_labmda', 0.0001, 1, log=True),
+                'num_leaves': trial.suggest_int('lightgbm_num_leaves', 4, 64),
+                'colsample_bytree': trial.suggest_float('lightgbm_colsample_bytree', 0, 1),
+                'subsample': trial.suggest_float('lightgbm_subsample', 0, 1),
+                'subsample_freq': trial.suggest_int('lightgbm_subsample_freq', 0, 7),
+                'min_child_samples': trial.suggest_int('lightgbm_min_child_samples', 0, 20),
                 'random_state': self.tuning_seed,
                 'verbose': -1,
-                'n_estimators': 300
+                'n_estimators': 500
                 # 'device': 'gpu'
             }
             model = LGBMRegressor(**params_range)

@@ -191,8 +191,9 @@ class OuterCVRunner:
             plt.plot(eval_results['training']['rmse'], label='Training Loss')
             plt.plot(eval_results['valid_1']['rmse'], label='Validation Loss')
             plt.xlabel('Iteration')
-            plt.ylabel('QWK')
+            plt.ylabel('RMSE')
             plt.title('Learning Curve')
+            plt.ylim([0, 1])
             plt.legend()
             plt.savefig(f'../model/lr_{self.run_name}_{i_fold}.png')
 
@@ -220,18 +221,18 @@ class OuterCVRunner:
             plt.savefig(f'../model/res_{self.run_name}_{i_fold}.png')
 
             # shap
-            explainer = shap.Explainer(model, train_x.iloc[cv_results['tr_idx'][i_fold]])
-            shap_values = explainer.shap_values(train_x.iloc[cv_results['va_idx'][i_fold]])
-            plt.figure(figsize=(10, 6))
-            shap.summary_plot(
-                 shap_values=shap_values
-                ,features=train_x.iloc[cv_results['va_idx'][i_fold]]
-                ,feature_names=train_x.columns
-                ,show=False
-            )
-            plt.title(f'SHAP Summary Plot for {self.run_name}_{i_fold}')
-            plt.savefig(f'../model/shap_{self.run_name}_{i_fold}.png')
-            plt.close()
+            # explainer = shap.Explainer(model, train_x.iloc[cv_results['tr_idx'][i_fold]])
+            # shap_values = explainer.shap_values(train_x.iloc[cv_results['va_idx'][i_fold]])
+            # plt.figure(figsize=(10, 6))
+            # shap.summary_plot(
+            #      shap_values=shap_values
+            #     ,features=train_x.iloc[cv_results['va_idx'][i_fold]]
+            #     ,feature_names=train_x.columns
+            #     ,show=False
+            # )
+            # plt.title(f'SHAP Summary Plot for {self.run_name}_{i_fold}')
+            # plt.savefig(f'../model/shap_{self.run_name}_{i_fold}.png')
+            # plt.close()
 
         # 各foldの結果をまとめる
         # va_idxes = np.concatenate(va_idxes)
