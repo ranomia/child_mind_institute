@@ -28,7 +28,7 @@ config = Config()
 params_cls = Params()
 
 class OuterCVRunner:
-    def __init__(self, run_name: str, model_cls: None, params: None):
+    def __init__(self, run_name: str, model_cls: None, params: None, cv_seed: int, tuning_seed: int):
         """
         コンストラクタ
 
@@ -43,6 +43,8 @@ class OuterCVRunner:
         self.params = params
         self.n_fold = 3
         self.dtype_dict = {}
+        self.cv_seed = cv_seed
+        self.tuning_seed = tuning_seed
 
     def train_fold(self, i_fold: Union[int, str], cv_results: dict):
         """
@@ -79,10 +81,10 @@ class OuterCVRunner:
 
             # ハイパーパラメータのチューニングを行う
             if config.group_column is None:
-                inner_runner = InnerCVRunner()
+                inner_runner = InnerCVRunner(tuning_seed=self.tuning_seed)
                 best_params_dict = inner_runner.parameter_tuning(tu_x, tu_y, None, n_trials=10)
             else:
-                inner_runner = InnerCVRunner()
+                inner_runner = InnerCVRunner(tuning_seed=self.tuning_seed)
                 best_params_dict = inner_runner.parameter_tuning(tu_x, tu_y, tu_g, n_trials=100)
             
             params_dict = {
@@ -276,7 +278,7 @@ class OuterCVRunner:
         # ラン名、fold、モデルのクラスからモデルを作成する
         if is_pipeline:
             # model = self.build_pipeline(self.run_name, fold_name, params)
-            lgb_model = LGBMRegressor(**params_dict['lightgbm'], random_state=config.cv_seed, verbose=-1, n_estimators=300)
+            lgb_model = LGBMRegressor(**params_dict['lightgbm'], random_state=self.cv_seed, verbose=-1, n_estimators=300)
 
             pipeline = Pipeline([
                 ('imputer', SimpleImputer(strategy='mean')),
@@ -286,7 +288,7 @@ class OuterCVRunner:
             return pipeline
         else:
             # model = self.model_cls(self.run_name, fold_name, params)
-            lgb_model = LGBMRegressor(**params_dict['lightgbm'], random_state=config.cv_seed, verbose=-1, n_estimators=300)
+            lgb_model = LGBMRegressor(**params_dict['lightgbm'], random_state=self.cv_seed, verbose=-1, n_estimators=300)
 
             return lgb_model
     
@@ -399,10 +401,10 @@ class OuterCVRunner:
         train_y = self.load_y_train()
 
         if config.group_column == '':
-            kfold = StratifiedKFold(n_splits=self.n_fold, shuffle=True, random_state=config.cv_seed)
+            kfold = StratifiedKFold(n_splits=self.n_fold, shuffle=True, random_state=self.cv_seed)
             idx_thisfold = list(kfold.split(train_x, train_y))[i_fold]
         else:
-            kfold = ShuffledGroupKFold(n_splits=self.n_fold, shuffle=True, random_state=config.cv_seed)
+            kfold = ShuffledGroupKFold(n_splits=self.n_fold, shuffle=True, random_state=self.cv_seed)
             idx_thisfold = list(kfold.split(train_x, train_y, train_x[config.group_column]))[i_fold]
         return idx_thisfold
     
@@ -418,13 +420,13 @@ class OuterCVRunner:
 
         if config.group_column is None:
             # tr+tuとvaの分割
-            kfold = StratifiedKFold(n_splits=self.n_fold, shuffle=True, random_state=config.cv_seed)
+            kfold = StratifiedKFold(n_splits=self.n_fold, shuffle=True, random_state=self.cv_seed)
             trtu_idx, va_idx = list(kfold.split(train_x, train_y))[i_fold]
             # trとtuの分割
             tr_idx, tu_idx = train_test_split(trtu_idx, test_size=0.2, random_state=55)
         else:
             # tr+tuとvaの分割
-            kfold = ShuffledGroupKFold(n_splits=self.n_fold, shuffle=True, random_state=config.cv_seed)
+            kfold = ShuffledGroupKFold(n_splits=self.n_fold, shuffle=True, random_state=self.cv_seed)
             trtu_idx, va_idx = list(kfold.split(train_x, train_y, train_x[config.group_column]))[i_fold]
             # trとtuの分割
             tr_group, tu_group = train_test_split(train_x.iloc[trtu_idx]['no'].unique(), test_size=0.2, random_state=55)

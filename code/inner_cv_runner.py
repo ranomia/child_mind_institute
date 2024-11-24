@@ -22,10 +22,10 @@ from metric import quadratic_weighted_kappa
 config = Config()
 
 class InnerCVRunner:
-    def __init__(self) -> None:
+    def __init__(self, tuning_seed: int) -> None:
         self.n_repeats = 1
         self.n_splits = 3
-        self.seed = config.tuning_seed
+        self.tuning_seed = tuning_seed
 
     def objective(self, trial, model_type: str, tr_x: pd.DataFrame, tr_y: pd.Series, va_x: pd.DataFrame, va_y: pd.Series) -> float:
         if model_type == 'lightgbm':
@@ -39,7 +39,7 @@ class InnerCVRunner:
                 'bagging_freq': trial.suggest_int('lightgbm_bagging_freq', 1, 3),
                 'lambda_l1': trial.suggest_float('lightgbm_lambda_l1', 10, 50),
                 'lambda_l2': trial.suggest_float('lightgbm_lambda_l2', 10, 50),
-                'random_state': self.seed,
+                'random_state': self.tuning_seed,
                 'verbose': -1,
                 'n_estimators': 300
                 # 'device': 'gpu'
@@ -65,7 +65,7 @@ class InnerCVRunner:
                 'colsample_bytree': trial.suggest_float('xgboost_colsample_bytree', 0.6, 0.8),
                 'reg_alpha': trial.suggest_float('xgboost_reg_alpha', 10, 30),
                 'reg_lambda': trial.suggest_float('xgboost_reg_lambda', 10, 30),
-                'random_state': self.seed
+                'random_state': self.tuning_seed
                 # 'tree_method': 'gpu_hist',
             }
             model = XGBRegressor(**params_range)
@@ -76,7 +76,7 @@ class InnerCVRunner:
                 'depth': trial.suggest_int('catboost_depth', 3, 5),
                 'iterations': trial.suggest_int('catboost_iterations', 100, 150),
                 'l2_leaf_reg': trial.suggest_float('catboost_l2_leaf_reg', 10, 20),
-                'random_seed': self.seed,
+                'random_seed': self.tuning_seed,
                 'verbose': 0
                 # 'task_type': 'GPU'
             }
@@ -100,10 +100,10 @@ class InnerCVRunner:
             score_list = []
             best_params_list = []
 
-            study = optuna.create_study(direction='minimize', sampler=optuna.samplers.TPESampler(seed=self.seed))
+            study = optuna.create_study(direction='minimize', sampler=optuna.samplers.TPESampler(seed=self.tuning_seed))
 
             if config.group_column is None:
-                kfold = StratifiedKFold(n_splits=self.n_splits, shuffle=True, random_state=config.tuning_seed)
+                kfold = StratifiedKFold(n_splits=self.n_splits, shuffle=True, random_state=self.tuning_seed)
                 for i_fold, (tr_idx, va_idx) in enumerate(kfold.split(all_x, all_y)):
                     tr_x, tr_y = all_x.iloc[tr_idx], all_y.iloc[tr_idx]
                     va_x, va_y = all_x.iloc[va_idx], all_y.iloc[va_idx]
@@ -119,7 +119,7 @@ class InnerCVRunner:
                 best_index = np.argmin(score_list)
                 best_params_all[model_type] = best_params_list[best_index]
             else:
-                kfold = ShuffledGroupKFold(n_splits=self.n_splits, shuffle=True, random_state=config.tuning_seed)
+                kfold = ShuffledGroupKFold(n_splits=self.n_splits, shuffle=True, random_state=self.tuning_seed)
                 for i_fold in range(self.n_splits):
                     tr_idx, va_idx = list(kfold.split(all_x, all_y, all_group))[i_fold]
                     tr_x, tr_y = all_x.iloc[tr_idx], all_y.iloc[tr_idx]
