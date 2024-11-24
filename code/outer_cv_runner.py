@@ -14,6 +14,7 @@ from lightgbm import LGBMRegressor
 from xgboost import XGBRegressor
 from catboost import CatBoostRegressor
 import matplotlib.pyplot as plt
+import shap
 
 from typing import Callable, List, Optional, Tuple, Union
 
@@ -103,7 +104,8 @@ class OuterCVRunner:
                  tr_x
                 ,tr_y
                 ,eval_set=[(tr_x, tr_y), (va_x, va_y)]
-                ,eval_metric=lambda y_true, y_pred: ('qwk', quadratic_weighted_kappa(y_true, y_pred), True)
+                # ,eval_metric=lambda y_true, y_pred: ('qwk', quadratic_weighted_kappa(y_true, y_pred), True)
+                ,eval_metric='rmse'
                 ,callbacks=[
                     lgb.early_stopping(stopping_rounds=50, verbose=False)
                 ]
@@ -126,7 +128,7 @@ class OuterCVRunner:
             cv_results['tu_idx'].append(tu_idx)
             cv_results['va_idx'].append(va_idx)
             cv_results['tr_y'].append(tr_y)
-            cv_results['va_y'].append(tr_y)
+            cv_results['va_y'].append(va_y)
             cv_results['tr_y_pred'].append(tr_y_pred)
             cv_results['va_y_pred'].append(va_y_pred)
             # cv_results['params'].append(best_params)
@@ -145,6 +147,14 @@ class OuterCVRunner:
         """
         クロスバリデーションでの学習・評価を行う
         """
+        # 学習データの読込（shap出力のため）
+        train_x = self.load_x_train()
+
+        # groupありの場合はgroup_columnを特徴量から削除
+        if config.group_column is not None:
+            train_group = train_x[config.group_column]
+            train_x = train_x.drop(config.group_column, axis=1)
+
         logger.info(f'{self.run_name} - start training outer cv')
 
         cv_results = {
@@ -178,13 +188,50 @@ class OuterCVRunner:
             # 学習曲線のプロット
             eval_results = model.evals_result_
             plt.figure(figsize=(10, 6))
-            plt.plot(eval_results['training']['qwk'], label='Training Loss')
-            plt.plot(eval_results['valid_1']['qwk'], label='Validation Loss')
+            plt.plot(eval_results['training']['rmse'], label='Training Loss')
+            plt.plot(eval_results['valid_1']['rmse'], label='Validation Loss')
             plt.xlabel('Iteration')
             plt.ylabel('QWK')
             plt.title('Learning Curve')
             plt.legend()
             plt.savefig(f'../model/lr_{self.run_name}_{i_fold}.png')
+
+            # 残差のプロット
+            tr_res = cv_results['tr_y'][i_fold] - cv_results['tr_y_pred'][i_fold]
+            va_res = cv_results['va_y'][i_fold] - cv_results['va_y_pred'][i_fold]
+            # 残差プロット
+            plt.figure(figsize=(14, 6))
+            # tr
+            plt.subplot(1, 2, 1)
+            plt.scatter(cv_results['tr_y'][i_fold], tr_res, alpha=0.5)
+            plt.axhline(y=0, color='red', linestyle='--')
+            plt.xlabel('Real Values (Train)')
+            plt.ylabel('Residuals (Train)')
+            plt.title('Residual Plot (Train)')
+            # va
+            plt.subplot(1, 2, 2)
+            plt.scatter(cv_results['va_y'][i_fold], va_res, alpha=0.5)
+            plt.axhline(y=0, color='red', linestyle='--')
+            plt.xlabel('Real Values (Validation)')
+            plt.ylabel('Residuals (Validation)')
+            plt.title('Residual Plot (Validation)')
+            
+            plt.tight_layout()
+            plt.savefig(f'../model/res_{self.run_name}_{i_fold}.png')
+
+            # shap
+            explainer = shap.Explainer(model, train_x.iloc[cv_results['tr_idx'][i_fold]])
+            shap_values = explainer.shap_values(train_x.iloc[cv_results['va_idx'][i_fold]])
+            plt.figure(figsize=(10, 6))
+            shap.summary_plot(
+                 shap_values=shap_values
+                ,features=train_x.iloc[cv_results['va_idx'][i_fold]]
+                ,feature_names=train_x.columns
+                ,show=False
+            )
+            plt.title(f'SHAP Summary Plot for {self.run_name}_{i_fold}')
+            plt.savefig(f'../model/shap_{self.run_name}_{i_fold}.png')
+            plt.close()
 
         # 各foldの結果をまとめる
         # va_idxes = np.concatenate(va_idxes)
