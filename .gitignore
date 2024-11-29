@@ -1,8 +1,14 @@
 # workspaceファイルを無視する
 child_mind_institute.code-workspace
 
-# dataファイルを無視する
-data
+# dataフォルダ下を無視する
+data/
+
+# modelフォルダ下を無視する
+model/
+
+# jupyterフォルダ下を無視する
+jupyter/
 
 # .vscodeフォルダ下を無視する
 .vscode/
