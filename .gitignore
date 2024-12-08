@@ -12,3 +12,6 @@ jupyter/
 
 # .vscodeフォルダ下を無視する
 .vscode/
+
+# .pt_tmpフォルダ下を無視する
+.pt_tmp/
