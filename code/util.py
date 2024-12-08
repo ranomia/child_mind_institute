@@ -63,6 +63,24 @@ class Logger:
     def to_ltsv(self, dic):
         return '\t'.join(['{}:{}'.format(key, value) for key, value in dic.items()])
     
+    def log_fold_scores(self, metric: str, fold_rmse_scores: list):
+        """
+        各foldのRMSEスコアとその平均値をログに出力する
+        :param metric: 指標の名前
+        :param fold_rmse_scores: 各foldのRMSEスコア（リスト形式）
+        """
+        avg_rmse = np.mean(fold_rmse_scores)
+        avg_std = np.std(fold_rmse_scores)
+
+        # 各foldのスコアを改行してログ出力
+        log_message = f"Fold {metric} Scores:\n" + "\n".join(
+            [f"  Fold {i+1}: {score:.4f}" for i, score in enumerate(fold_rmse_scores)]
+        )
+        log_message += f"\nCV {metric}: {avg_rmse:.4f} +/- {avg_std:.4f}"
+
+        # ログ出力
+        self.info(log_message)
+
 class Submission: # 引用元から未修整のため、利用不可
     @classmethod
     def create_submission(cls, run_name):

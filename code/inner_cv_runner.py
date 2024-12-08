@@ -24,23 +24,24 @@ config = Config()
 class InnerCVRunner:
     def __init__(self, tuning_seed: int) -> None:
         self.n_repeats = 1
-        self.n_splits = 3
+        self.n_splits = 2
         self.tuning_seed = tuning_seed
 
     def objective(self, trial, model_type: str, tr_x: pd.DataFrame, tr_y: pd.Series, va_x: pd.DataFrame, va_y: pd.Series) -> float:
         if model_type == 'lightgbm':
             params_range = {
-                'learning_rate': trial.suggest_float('lightgbm_learning_rate', 0.01, 0.1, log=True),
-                'reg_alpha': trial.suggest_float('lightgbm_reg_alpha', 0.0001, 1, log=True),
-                'reg_lambda': trial.suggest_float('lightgbm_reg_labmda', 0.0001, 1, log=True),
-                'num_leaves': trial.suggest_int('lightgbm_num_leaves', 4, 64),
-                'colsample_bytree': trial.suggest_float('lightgbm_colsample_bytree', 0, 1),
-                'subsample': trial.suggest_float('lightgbm_subsample', 0, 1),
-                'subsample_freq': trial.suggest_int('lightgbm_subsample_freq', 0, 7),
-                'min_child_samples': trial.suggest_int('lightgbm_min_child_samples', 0, 20),
+                'learning_rate': trial.suggest_float('lightgbm_learning_rate', 0.0001, 0.01, log=True),
+                'reg_alpha': trial.suggest_float('lightgbm_reg_alpha', 1e-2, 10, log=True),
+                'reg_lambda': trial.suggest_float('lightgbm_reg_labmda', 1e-2, 10, log=True),
+                'num_leaves': trial.suggest_int('lightgbm_num_leaves', 16, 64),
+                'colsample_bytree': trial.suggest_float('lightgbm_colsample_bytree', 0.4, 0.8),
+                'subsample': trial.suggest_float('lightgbm_subsample', 0.4, 0.8),
+                'subsample_freq': trial.suggest_int('lightgbm_subsample_freq', 1, 10),
+                'min_child_samples': trial.suggest_int('lightgbm_min_child_samples', 20, 100),
+                'max_depth': trial.suggest_int('lightgbm_max_depth', 3, 10),
                 'random_state': self.tuning_seed,
                 'verbose': -1,
-                'n_estimators': 500
+                'n_estimators': 5000
                 # 'device': 'gpu'
             }
             model = LGBMRegressor(**params_range)

@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import os
+import json
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import root_mean_squared_error, mean_absolute_error
@@ -29,7 +30,7 @@ config = Config()
 params_cls = Params()
 
 class OuterCVRunner:
-    def __init__(self, run_name: str, model_cls: None, params: None, cv_seed: int, tuning_seed: int):
+    def __init__(self, run_name: str, model_cls: None, params_dict: None, cv_seed: int, tuning_seed: int):
         """
         コンストラクタ
 
@@ -41,8 +42,8 @@ class OuterCVRunner:
         """
         self.run_name = run_name
         self.model_cls = model_cls
-        self.params = params
-        self.n_fold = 3
+        self.params_dict = params_dict
+        self.n_fold = 10
         self.dtype_dict = {}
         self.cv_seed = cv_seed
         self.tuning_seed = tuning_seed
@@ -83,22 +84,28 @@ class OuterCVRunner:
             # ハイパーパラメータのチューニングを行う
             if config.group_column is None:
                 inner_runner = InnerCVRunner(tuning_seed=self.tuning_seed)
-                best_params_dict = inner_runner.parameter_tuning(tu_x, tu_y, None, n_trials=10)
+                tuned_params_dict_flatten = inner_runner.parameter_tuning(tu_x, tu_y, None, n_trials=10)
             else:
                 inner_runner = InnerCVRunner(tuning_seed=self.tuning_seed)
-                best_params_dict = inner_runner.parameter_tuning(tu_x, tu_y, tu_g, n_trials=100)
+                tuned_params_dict_flatten = inner_runner.parameter_tuning(tu_x, tu_y, tu_g, n_trials=100)
             
-            params_dict = {
+            tuned_params_dict = {
                 'lightgbm': {},
                 'xgboost': {},
                 'catboost': {}
             }
 
-            for model_type in best_params_dict.keys():
-                for param_name, param_value in best_params_dict[model_type].items():
-                    params_dict[model_type][param_name.replace(model_type+'_', '')] = param_value
+            for model_type in tuned_params_dict_flatten.keys():
+                for param_name, param_value in tuned_params_dict_flatten[model_type].items():
+                    tuned_params_dict[model_type][param_name.replace(model_type+'_', '')] = param_value
 
-            model = self.build_model(is_pipeline=False, i_fold=i_fold, params_dict=params_dict)
+            # params_dictの更新
+            self.params_dict = self.update_params_dict(params_dict=self.params_dict, tuned_params_dict=tuned_params_dict)
+
+            with open(f"../model/params_dict_{i_fold}.json", "w") as f:
+                json.dump(self.params_dict, f)
+
+            model = self.build_model(is_pipeline=False, i_fold=i_fold, params_dict=self.params_dict)
             # model.fit(tr_x, tr_y)
             model.fit(
                  tr_x
@@ -180,7 +187,7 @@ class OuterCVRunner:
             # 学習を行う
             logger.info(f'{self.run_name} fold {i_fold} - start training')
             model, cv_results = self.train_fold(i_fold, cv_results)
-            logger.info(f'{self.run_name} fold {i_fold} - end training - score {cv_results["va_rmse"][i_fold]}')
+            logger.info(f'{self.run_name} fold {i_fold} - end training - rmse score {cv_results["va_rmse"][i_fold]}')
 
             # モデルを保存する
             model.booster_.save_model(f'../model/model_{self.run_name}_{i_fold}.txt')
@@ -193,19 +200,25 @@ class OuterCVRunner:
             plt.xlabel('Iteration')
             plt.ylabel('RMSE')
             plt.title('Learning Curve')
-            plt.ylim([0, 1])
+            plt.ylim([0, 0.2])
             plt.legend()
             plt.savefig(f'../model/lr_{self.run_name}_{i_fold}.png')
 
             # 残差のプロット
             tr_res = cv_results['tr_y'][i_fold] - cv_results['tr_y_pred'][i_fold]
             va_res = cv_results['va_y'][i_fold] - cv_results['va_y_pred'][i_fold]
+
+            # y軸の範囲を計算
+            res_min = min(tr_res.min(), va_res.min())
+            res_max = max(tr_res.max(), va_res.max())
+
             # 残差プロット
             plt.figure(figsize=(14, 6))
             # tr
             plt.subplot(1, 2, 1)
             plt.scatter(cv_results['tr_y'][i_fold], tr_res, alpha=0.5)
             plt.axhline(y=0, color='red', linestyle='--')
+            plt.ylim(res_min*1.2, res_max*1.2)
             plt.xlabel('Real Values (Train)')
             plt.ylabel('Residuals (Train)')
             plt.title('Residual Plot (Train)')
@@ -213,6 +226,7 @@ class OuterCVRunner:
             plt.subplot(1, 2, 2)
             plt.scatter(cv_results['va_y'][i_fold], va_res, alpha=0.5)
             plt.axhline(y=0, color='red', linestyle='--')
+            plt.ylim(res_min*1.2, res_max*1.2)
             plt.xlabel('Real Values (Validation)')
             plt.ylabel('Residuals (Validation)')
             plt.title('Residual Plot (Validation)')
@@ -221,18 +235,18 @@ class OuterCVRunner:
             plt.savefig(f'../model/res_{self.run_name}_{i_fold}.png')
 
             # shap
-            # explainer = shap.Explainer(model, train_x.iloc[cv_results['tr_idx'][i_fold]])
-            # shap_values = explainer.shap_values(train_x.iloc[cv_results['va_idx'][i_fold]])
-            # plt.figure(figsize=(10, 6))
-            # shap.summary_plot(
-            #      shap_values=shap_values
-            #     ,features=train_x.iloc[cv_results['va_idx'][i_fold]]
-            #     ,feature_names=train_x.columns
-            #     ,show=False
-            # )
-            # plt.title(f'SHAP Summary Plot for {self.run_name}_{i_fold}')
-            # plt.savefig(f'../model/shap_{self.run_name}_{i_fold}.png')
-            # plt.close()
+            explainer = shap.Explainer(model, train_x.iloc[cv_results['tr_idx'][i_fold]])
+            shap_values = explainer.shap_values(train_x.iloc[cv_results['va_idx'][i_fold]])
+            plt.figure(figsize=(10, 6))
+            shap.summary_plot(
+                 shap_values=shap_values
+                ,features=train_x.iloc[cv_results['va_idx'][i_fold]]
+                ,feature_names=train_x.columns
+                ,show=False
+            )
+            plt.title(f'SHAP Summary Plot for {self.run_name}_{i_fold}')
+            plt.savefig(f'../model/shap_{self.run_name}_{i_fold}.png')
+            plt.close()
 
         # 各foldの結果をまとめる
         # va_idxes = np.concatenate(va_idxes)
@@ -240,9 +254,9 @@ class OuterCVRunner:
         # preds = np.concatenate(preds, axis=0)
         # preds = preds[order]
 
-        logger.info(f'{self.run_name} - end training outer cv - score {np.mean(cv_results["va_rmse"])}')
-        logger.info(f'qwk tr score {cv_results["tr_qwk"]}')
-        logger.info(f'qwk va score {cv_results["va_qwk"]}')
+        logger.info(f'{self.run_name} - end training outer cv - rmse score {np.mean(cv_results["va_rmse"])}')
+        logger.log_fold_scores('tr_rmse', cv_results['tr_rmse'])
+        logger.log_fold_scores('va_rmse', cv_results['va_rmse'])
 
         # 予測結果の保存
         # Util.dump(preds, f'../model/{self.run_name}/pred/train.pkl')
@@ -326,7 +340,7 @@ class OuterCVRunner:
         # ラン名、fold、モデルのクラスからモデルを作成する
         if is_pipeline:
             # model = self.build_pipeline(self.run_name, fold_name, params)
-            lgb_model = LGBMRegressor(**params_dict['lightgbm'], random_state=self.cv_seed, verbose=-1, n_estimators=300)
+            lgb_model = LGBMRegressor(**params_dict['lightgbm'], random_state=self.cv_seed, verbose=-1, n_estimators=5000)
 
             pipeline = Pipeline([
                 ('imputer', SimpleImputer(strategy='mean')),
@@ -336,7 +350,7 @@ class OuterCVRunner:
             return pipeline
         else:
             # model = self.model_cls(self.run_name, fold_name, params)
-            lgb_model = LGBMRegressor(**params_dict['lightgbm'], random_state=self.cv_seed, verbose=-1, n_estimators=300)
+            lgb_model = LGBMRegressor(**params_dict['lightgbm'], random_state=self.cv_seed, verbose=-1, n_estimators=5000)
 
             return lgb_model
     
@@ -346,16 +360,24 @@ class OuterCVRunner:
 
         :return: 学習データの特徴量
         """
-        # 学習データを読み込む
-        if config.train_preprocessed_file_path.split('.')[-1] == 'pkl' or config.train_preprocessed_file_path.split('.')[-1] == 'pickle':
-            x_train = pd.read_pickle(config.train_preprocessed_file_path).drop(config.target_column, axis=1)
-        elif config.train_preprocessed_file_path.split('.')[-1] == 'csv':
-            x_train = pd.read_csv(config.train_preprocessed_file_path).drop(config.target_column, axis=1)
-        elif config.train_preprocessed_file_path.split('.')[-1] == 'excel':
-            x_train = pd.read_excel(config.train_preprocessed_file_path).drop(config.target_column, axis=1)
-        elif config.train_preprocessed_file_path.split('.')[-1] == 'parquet':
-            x_train = pd.read_parquet(config.train_preprocessed_file_path).drop(config.target_column, axis=1)
+        # 学習データのファイルパスから拡張子を取得
+        file_extension = config.train_preprocessed_file_path.split('.')[-1].lower()
         
+        # 拡張子に基づいて処理を分岐
+        if file_extension in ['pkl', 'pickle']:
+            x_train = pd.read_pickle(config.train_preprocessed_file_path).drop(config.target_column, axis=1)
+        elif file_extension == 'csv':
+            x_train = pd.read_csv(config.train_preprocessed_file_path).drop(config.target_column, axis=1)
+        elif file_extension == 'xlsx':
+            x_train = pd.read_excel(config.train_preprocessed_file_path).drop(config.target_column, axis=1)
+        elif file_extension == 'parquet':
+            x_train = pd.read_parquet(config.train_preprocessed_file_path).drop(config.target_column, axis=1)
+        elif file_extension == 'jsonl':
+            x_train = pd.read_json(config.train_preprocessed_file_path, lines=True).drop(config.target_column, axis=1)
+        else:
+            # 未対応の形式に対するエラーを発生させる
+            raise ValueError(f"Unsupported file format: '{file_extension}'. Supported formats are: pkl, pickle, csv, xlsx, parquet, jsonl.")
+
         # int -> float -> objectの順で変換を試行
         for column in x_train.columns:
             col_data = x_train[column]
@@ -370,7 +392,7 @@ class OuterCVRunner:
                 except ValueError:
                     # If float conversion fails, keep as object
                     x_train[column] = col_data.astype(object)
-
+        
         # object型のカラムをcategory型に変換
         for col in x_train.select_dtypes(include=['object']).columns:
             x_train[col] = x_train[col].astype('category')
@@ -392,15 +414,23 @@ class OuterCVRunner:
 
         :return: 学習データの目的変数
         """
-        # 学習データを読み込む
-        if config.train_preprocessed_file_path.split('.')[-1] == 'pkl' or config.train_preprocessed_file_path.split('.')[-1] == 'pickle':
+        # 学習データのファイルパスから拡張子を取得
+        file_extension = config.train_preprocessed_file_path.split('.')[-1].lower()
+
+        # 拡張子に基づいて処理を分岐
+        if file_extension in ['pkl', 'pickle']:
             y_train = pd.read_pickle(config.train_preprocessed_file_path)[config.target_column]
-        elif config.train_preprocessed_file_path.split('.')[-1] == 'csv':
+        elif file_extension == 'csv':
             y_train = pd.read_csv(config.train_preprocessed_file_path)[config.target_column]
-        elif config.train_preprocessed_file_path.split('.')[-1] == 'excel':
+        elif file_extension == 'xlsx':
             y_train = pd.read_excel(config.train_preprocessed_file_path)[config.target_column]
-        elif config.train_preprocessed_file_path.split('.')[-1] == 'parquet':
+        elif file_extension == 'parquet':
             y_train = pd.read_parquet(config.train_preprocessed_file_path)[config.target_column]
+        elif file_extension == 'jsonl':
+            y_train = pd.read_json(config.train_preprocessed_file_path, lines=True)[config.target_column]
+        else:
+            # 未対応の形式に対するエラーを発生させる
+            raise ValueError(f"Unsupported file format: '{file_extension}'. Supported formats are: pkl, pickle, csv, xlsx, parquet, jsonl.")
 
         return y_train
     
@@ -410,15 +440,23 @@ class OuterCVRunner:
 
         :return: テストデータの特徴量
         """
-        # テストデータを読み込む
-        if config.test_preprocessed_file_path.split('.')[-1] == 'pkl' or config.test_preprocessed_file_path.split('.')[-1] == 'pickle':
+        # 学習データのファイルパスから拡張子を取得
+        file_extension = config.test_preprocessed_file_path.split('.')[-1].lower()
+
+        # 拡張子に基づいて処理を分岐
+        if file_extension in ['pkl', 'pickle']:
             x_test = pd.read_pickle(config.test_preprocessed_file_path)
-        elif config.test_preprocessed_file_path.split('.')[-1] == 'csv':
-            x_test = pd.read_csv(config.test_preprocessed_file_path, dtype=self.dtype_dict)
-        elif config.test_preprocessed_file_path.split('.')[-1] == 'excel':
+        elif file_extension == 'csv':
+            x_test = pd.read_csv(config.test_preprocessed_file_path)
+        elif file_extension == 'xlsx':
             x_test = pd.read_excel(config.test_preprocessed_file_path)
-        elif config.test_preprocessed_file_path.split('.')[-1] == 'parquet':
+        elif file_extension == 'parquet':
             x_test = pd.read_parquet(config.test_preprocessed_file_path)
+        elif file_extension == 'jsonl':
+            x_test = pd.read_json(config.test_preprocessed_file_path, lines=True)
+        else:
+            # 未対応の形式に対するエラーを発生させる
+            raise ValueError(f"Unsupported file format: '{file_extension}'. Supported formats are: pkl, pickle, csv, xlsx, parquet, jsonl.")
 
         # 訓練データのデータ型に合わせる
         for column, dtype in self.dtype_dict.items():
@@ -477,8 +515,27 @@ class OuterCVRunner:
             kfold = ShuffledGroupKFold(n_splits=self.n_fold, shuffle=True, random_state=self.cv_seed)
             trtu_idx, va_idx = list(kfold.split(train_x, train_y, train_x[config.group_column]))[i_fold]
             # trとtuの分割
-            tr_group, tu_group = train_test_split(train_x.iloc[trtu_idx]['no'].unique(), test_size=0.2, random_state=55)
-            tr_idx = np.array(train_x[train_x['no'].isin(tr_group)].index)
-            tu_idx = np.array(train_x[train_x['no'].isin(tu_group)].index)
+            tr_group, tu_group = train_test_split(train_x.iloc[trtu_idx][config.group_column].unique(), test_size=0.2, random_state=55)
+            tr_idx = np.array(train_x[train_x[config.group_column].isin(tr_group)].index)
+            tu_idx = np.array(train_x[train_x[config.group_column].isin(tu_group)].index)
 
         return tr_idx, tu_idx, va_idx
+    
+    def update_params_dict(self, params_dict: dict, tuned_params_dict: dict) -> dict:
+        """
+        InnerCVRunnerでチューニングされたパラメータを上書きするためのプログラム
+        元のparams_dictに定義されていない場合は、新規に追加する
+        :param params_dict: 元のパラメータ
+        :param tuned_params_dict: InnerCVRunnerでチューニングされたパラメータ
+        :return: 更新されたパラメータ
+        """
+
+        
+        for key, value in tuned_params_dict.items():
+            # キーが存在しない場合は初期化
+            if key not in params_dict:
+                params_dict[key] = {}
+            # params_dict を tuned_params_dict の内容で更新
+            params_dict[key].update(value)
+        
+        return params_dict

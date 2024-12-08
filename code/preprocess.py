@@ -13,8 +13,12 @@ numeric_converter = NumericConverter()
 logger = Logger()
 
 class Preprocess:
-    def __init__(self) -> None:
-        pass
+    def __init__(self, tr_input_path: str, tr_output_path: str, te_input_path: str, te_output_path: str, is_trainonly: bool = False) -> None:
+        self.tr_input_path = tr_input_path
+        self.tr_output_path = tr_output_path
+        self.te_input_path = te_input_path
+        self.te_output_path = te_output_path
+        self.is_trainonly = is_trainonly
 
     def normalize_string_of_df(self, df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -41,72 +45,75 @@ class Preprocess:
         
         return df
     
-    def load_train(self) -> pd.DataFrame:
+    def load_data(self, input_path: str) -> pd.DataFrame:
         """
-        学習データを読み込む
+        データを読み込む
 
-        :return: 学習データ
+        :return: データフレーム
         """
-        # 学習データを読み込む
-        if config.train_file_path.split('.')[-1] == 'pkl' or config.train_file_path.split('.')[-1] == 'pickle':
-            train = pd.read_pickle(config.train_file_path)
-        elif config.train_file_path.split('.')[-1] == 'csv':
-            train = pd.read_csv(config.train_file_path)
-        elif config.train_file_path.split('.')[-1] == 'excel':
-            train = pd.read_excel(config.train_file_path)
-            
-        return train
+        # ファイル拡張子を取得
+        file_extension = input_path.split('.')[-1].lower()
+
+        # 拡張子に基づいて処理を分岐
+        if file_extension in ['pkl', 'pickle']:
+            df = pd.read_pickle(input_path)
+        elif file_extension == 'csv':
+            df = pd.read_csv(input_path)
+        elif file_extension == 'xlsx':
+            df = pd.read_excel(input_path)
+        elif file_extension == 'parquet':
+            df = pd.read_parquet(input_path)
+        elif file_extension == 'jsol':
+            df = pd.read_json(input_path, lines=True)
+        else:
+            # 未対応の形式に対するエラーを発生させる
+            raise ValueError(f"Unsupported file format: '{file_extension}'. Supported formats are: pkl, pickle, csv, xlsx, parquet.")
+
+        return df
     
-    def load_test(self) -> pd.DataFrame:
+    def save_data(self, df: pd.DataFrame, output_path: str) -> None:
         """
-        テストデータを読み込む
-
-        :return: テストデータ
+        データフレームをjson linesで保存する
         """
-        # 学習データを読み込む
-        if config.test_file_path.split('.')[-1] == 'pkl' or config.test_file_path.split('.')[-1] == 'pickle':
-            test = pd.read_pickle(config.test_file_path)
-        elif config.test_file_path.split('.')[-1] == 'csv':
-            test = pd.read_csv(config.test_file_path)
-        elif config.test_file_path.split('.')[-1] == 'excel':
-            test = pd.read_excel(config.test_file_path)
-            
-        return test
-    
-    def save_train(self, train: pd.DataFrame) -> None:
-        """
-        学習データを保存する
-        """
-        train.to_pickle(config.train_preprocessed_file_path)
-
-    def save_test(self, test: pd.DataFrame) -> None:
-        """
-        学習データを保存する
-        """
-        test.to_pickle(config.test_preprocessed_file_path)
+        df.to_json(output_path, force_ascii=False, lines=True, orient='records')
 
     def forward(self) -> None:
         logger.info(f'preprocess start')
-        # ファイルの読込
-        df_train = self.load_train()
-        df_test = self.load_test()
 
+        # ファイルの読込
+        df_train = self.load_data(self.tr_input_path)
         tr_x, tr_y = df_train.drop(config.target_column, axis=1), df_train[config.target_column]
-        te_x = df_test
         
         # 値やカラム名の文字列を正規化（特徴量のみに適用）
         tr_x = self.normalize_string_of_df(tr_x)
-        te_x = self.normalize_string_of_df(te_x)
         
         # 不要なカラムを削除（特徴量のみに適用）
         tr_x = column_cleaner.fit_transform(tr_x)
-        te_x = column_cleaner.transform(te_x)
 
         # 全データの数値化
         tr_x = numeric_converter.fit_transform(tr_x)
-        te_x = numeric_converter.transform(te_x)
+
+        # 訓練データの特徴量と目的変数結合
+        tr_xy = pd.merge(tr_x, tr_y, how='inner', left_index=True, right_index=True)
 
         # ファイルの書き出し
-        self.save_train(pd.merge(tr_x, tr_y, how='inner', left_index=True, right_index=True))
-        self.save_test(te_x)
+        self.save_data(tr_xy, self.tr_output_path)
+
+        if self.is_trainonly == False:
+            # ファイルの読込
+            df_test = self.load_data(self.te_input_path)
+            te_x = df_test
+            
+            # 値やカラム名の文字列を正規化（特徴量のみに適用）
+            te_x = self.normalize_string_of_df(te_x)
+            
+            # 不要なカラムを削除（特徴量のみに適用）
+            te_x = column_cleaner.transform(te_x)
+
+            # 全データの数値化
+            te_x = numeric_converter.transform(te_x)
+
+            # ファイルの書き出し
+            self.save_data(te_x, self.te_output_path)
+
         logger.info(f'preprocess end')
