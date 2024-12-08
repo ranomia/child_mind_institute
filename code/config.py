@@ -11,10 +11,10 @@ class Config:
         self._cv_seed = 150
         self._train_file_path = '../data/input/train_extracted_密度_かさ.jsol'
         self._test_file_path = '../data/input/train_extracted_密度_かさ.jsol'
-        self._train_preprocessed_file_path = '../data/intermediate/train.jsonl'
-        self._test_preprocessed_file_path = '../data/intermediate/test.jsonl'
-        self._target_column = '密度_かさ'
-        self._group_column = 'no__md使用_' # group無の場合はNoneを指定
+        self._train_preprocessed_file_path = '../data/intermediate/train.parquet'
+        self._test_preprocessed_file_path = '../data/intermediate/test.parquet'
+        self._target_column = 'sii'
+        self._group_column = None # group無の場合はNoneを指定
 
     @staticmethod
     def set_font():

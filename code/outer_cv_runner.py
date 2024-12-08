@@ -200,7 +200,7 @@ class OuterCVRunner:
             plt.xlabel('Iteration')
             plt.ylabel('RMSE')
             plt.title('Learning Curve')
-            plt.ylim([0, 0.2])
+            plt.ylim([0, 1.0])
             plt.legend()
             plt.savefig(f'../model/lr_{self.run_name}_{i_fold}.png')
 
@@ -257,6 +257,8 @@ class OuterCVRunner:
         logger.info(f'{self.run_name} - end training outer cv - rmse score {np.mean(cv_results["va_rmse"])}')
         logger.log_fold_scores('tr_rmse', cv_results['tr_rmse'])
         logger.log_fold_scores('va_rmse', cv_results['va_rmse'])
+        logger.log_fold_scores('tr_qwk', cv_results['tr_qwk'])
+        logger.log_fold_scores('va_qwk', cv_results['va_qwk'])
 
         # 予測結果の保存
         # Util.dump(preds, f'../model/{self.run_name}/pred/train.pkl')
