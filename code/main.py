@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import os
 
 from outer_cv_runner import OuterCVRunner
 from preprocess import Preprocess
@@ -54,12 +55,19 @@ if __name__ == '__main__':
 
     # lightGBMによる学習・予測
     for run_i in range(1):
+        run_name = f'lgb_{datetime.datetime.now().strftime("%Y%m%d%H%M")}_{run_i}'
+        
+        # モデルディレクトリの作成
+        model_dir = f'../model/{run_name}'
+        os.makedirs(model_dir, exist_ok=True)
+        
         outer_runner = OuterCVRunner(
-             run_name = 'lgb4_'+str(run_i)
+             run_name = run_name
             ,model_cls = None
             ,params_dict = {}
             ,cv_seed = config.cv_seed
             ,tuning_seed = config.tuning_seed
+            ,model_dir = model_dir
         )
         outer_runner.run_train_cv()
     #     outer_runner.run_predict_cv()

@@ -35,14 +35,14 @@ class InnerCVRunner:
     def objective(self, trial, model_type: str, tr_x: pd.DataFrame, tr_y: pd.Series, va_x: pd.DataFrame, va_y: pd.Series) -> float:
         if model_type == 'lightgbm':
             params_range = {
-                'learning_rate': trial.suggest_float('lightgbm_learning_rate', 0.0001, 0.01, log=True),
-                'reg_alpha': trial.suggest_float('lightgbm_reg_alpha', 1e-2, 100, log=True),
-                'reg_lambda': trial.suggest_float('lightgbm_reg_labmda', 1e-2, 100, log=True),
+                'learning_rate': trial.suggest_float('lightgbm_learning_rate', 0.0001, 0.001, log=True),
+                'reg_alpha': trial.suggest_float('lightgbm_reg_alpha', 1e-1, 100, log=True),
+                'reg_lambda': trial.suggest_float('lightgbm_reg_labmda', 1e-1, 100, log=True),
                 'num_leaves': trial.suggest_int('lightgbm_num_leaves', 4, 32),
                 'colsample_bytree': trial.suggest_float('lightgbm_colsample_bytree', 0.6, 0.9),
                 'subsample': trial.suggest_float('lightgbm_subsample', 0.6, 0.9),
                 'subsample_freq': trial.suggest_int('lightgbm_subsample_freq', 3, 7),
-                'min_child_samples': trial.suggest_int('lightgbm_min_child_samples', 50, 300),
+                'min_child_samples': trial.suggest_int('lightgbm_min_child_samples', 100, 300),
                 'max_depth': trial.suggest_int('lightgbm_max_depth', 2, 6),
                 # 'device': 'gpu'
             }

@@ -34,7 +34,7 @@ config = Config()
 params_cls = Params()
 
 class OuterCVRunner:
-    def __init__(self, run_name: str, model_cls: None, params_dict: None, cv_seed: int, tuning_seed: int):
+    def __init__(self, run_name: str, model_cls: None, params_dict: None, cv_seed: int, tuning_seed: int, model_dir: str):
         """
         コンストラクタ
 
@@ -52,6 +52,7 @@ class OuterCVRunner:
         self.cv_seed = cv_seed
         self.tuning_seed = tuning_seed
         self.selector = FeatureSelector()
+        self.model_dir = model_dir  # モデルディレクトリのパスを保存
 
     def train_fold(self, i_fold: Union[int, str], cv_results: dict):
         """
@@ -110,7 +111,7 @@ class OuterCVRunner:
             # params_dictの更新
             self.params_dict = self.update_params_dict(params_dict=self.params_dict, tuned_params_dict=tuned_params_dict)
 
-            with open(f"../model/params_dict_{i_fold}.json", "w") as f:
+            with open(f"{self.model_dir}/params_dict_{i_fold}.json", "w") as f:
                 json.dump(self.params_dict, f)
 
             model_pipe = self.build_model(is_pipeline=True, params_dict=self.params_dict)
@@ -208,7 +209,9 @@ class OuterCVRunner:
             logger.info(f'{self.run_name} fold {i_fold} - end training - rmse score {cv_results["va_rmse"][i_fold]}')
 
             # モデルを保存する
-            model.named_steps['model'].booster_.save_model(f'../model/model_{self.run_name}_{i_fold}.txt')
+            model.named_steps['model'].booster_.save_model(
+                f'{self.model_dir}/model_{self.run_name}_{i_fold}.txt'
+            )
         
             # 学習曲線のプロット
             eval_results = model.named_steps['model'].evals_result_
@@ -220,7 +223,7 @@ class OuterCVRunner:
             plt.title('Learning Curve')
             plt.ylim([0, 1.0])
             plt.legend()
-            plt.savefig(f'../model/lr_{self.run_name}_{i_fold}.png')
+            plt.savefig(f'{self.model_dir}/lr_{self.run_name}_{i_fold}.png')
 
             # 残差のプロット
             tr_res = cv_results['tr_y'][i_fold] - cv_results['tr_y_pred'][i_fold]
@@ -250,7 +253,7 @@ class OuterCVRunner:
             plt.title('Residual Plot (Validation)')
             
             plt.tight_layout()
-            plt.savefig(f'../model/res_{self.run_name}_{i_fold}.png')
+            plt.savefig(f'{self.model_dir}/res_{self.run_name}_{i_fold}.png')
 
             # shap
             train_data = train_x.iloc[cv_results['tr_idx'][i_fold]]
@@ -289,7 +292,7 @@ class OuterCVRunner:
             )
             plt.title(f'SHAP Summary Plot for {self.run_name}_{i_fold}')
             plt.tight_layout()
-            plt.savefig(f'../model/shap_{self.run_name}_{i_fold}.png')
+            plt.savefig(f'{self.model_dir}/shap_{self.run_name}_{i_fold}.png')
             plt.close()
 
         # 各foldの結果をまとめる
