@@ -3,9 +3,12 @@ import pandas as pd
 
 from outer_cv_runner import OuterCVRunner
 from preprocess import Preprocess
+from feature_engineering import FeatureEngineering
 from user_column_extractor import UseColumnExtractor
 from util import Submission
 from config import Config
+from missing_value_handler import MissingValueHandler
+from preprocess_tools import ColumnCleaner
 
 if __name__ == '__main__':
 
@@ -27,6 +30,27 @@ if __name__ == '__main__':
     #     ,is_trainonly = True
     # )
     # preprocess.forward()
+
+    # 特徴量作成
+    # feature_engineering = FeatureEngineering(
+    #      input_path = config.train_preprocessed_file_path
+    #     ,output_path = config.train_feature_engineering_file_path
+    # )
+    # feature_engineering.forward()
+
+    # 欠損値処理
+    # missing_value_handler = MissingValueHandler(
+    #      input_path = config.train_feature_engineering_file_path
+    #     ,output_path = config.train_missing_value_handled_file_path
+    # )
+    # missing_value_handler.forward()
+
+    # 不要カラムの削除
+    # columncleaner = ColumnCleaner(
+    #      input_path = config.train_missing_value_handled_file_path
+    #     ,output_path = config.train_column_cleaned_file_path
+    # )
+    # columncleaner.forward()
 
     # lightGBMによる学習・予測
     for run_i in range(1):

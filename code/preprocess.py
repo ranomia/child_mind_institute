@@ -8,7 +8,7 @@ from preprocess_tools import ColumnCleaner, NumericConverter
 from util import Logger
 
 config = Config()
-column_cleaner = ColumnCleaner()
+# column_cleaner = ColumnCleaner()
 numeric_converter = NumericConverter()
 logger = Logger()
 
@@ -33,6 +33,7 @@ class Preprocess:
             # 正規化し、空白や改行をアンダースコアに変換し、小文字に変換
             normalized_string = unicodedata.normalize('NFKC', raw_string)
             normalized_string = re.sub(r'[^\w]', '_', normalized_string).lower()
+            normalized_string = re.sub(r'_+', '_', normalized_string)  # 連続するアンダースコアを1つに置換
             return normalized_string
         
         # カラム名を修正
@@ -63,7 +64,7 @@ class Preprocess:
             df = pd.read_excel(input_path)
         elif file_extension == 'parquet':
             df = pd.read_parquet(input_path)
-        elif file_extension == 'jsol':
+        elif file_extension == 'jsonl':
             df = pd.read_json(input_path, lines=True)
         else:
             # 未対応の形式に対するエラーを発生させる
@@ -88,10 +89,10 @@ class Preprocess:
         tr_x = self.normalize_string_of_df(tr_x)
         
         # 不要なカラムを削除（特徴量のみに適用）
-        tr_x = column_cleaner.fit_transform(tr_x)
+        # tr_x = column_cleaner.fit_transform(tr_x)
 
         # 全データの数値化
-        tr_x = numeric_converter.fit_transform(tr_x)
+        # tr_x = numeric_converter.fit_transform(tr_x)
 
         # 訓練データの特徴量と目的変数結合
         tr_xy = pd.merge(tr_x, tr_y, how='inner', left_index=True, right_index=True)
@@ -108,10 +109,10 @@ class Preprocess:
             te_x = self.normalize_string_of_df(te_x)
             
             # 不要なカラムを削除（特徴量のみに適用）
-            te_x = column_cleaner.transform(te_x)
+            # te_x = column_cleaner.transform(te_x)
 
             # 全データの数値化
-            te_x = numeric_converter.transform(te_x)
+            # te_x = numeric_converter.transform(te_x)
 
             # ファイルの書き出し
             self.save_data(te_x, self.te_output_path)

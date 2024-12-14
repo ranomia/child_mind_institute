@@ -10,6 +10,9 @@ from typing import Callable, Union
 from sklearn.ensemble import VotingRegressor
 from sklearn.base import clone
 from sklearn.impute import SimpleImputer
+from sklearn.preprocessing import OrdinalEncoder
+from sklearn.compose import ColumnTransformer
+from sklearn.preprocessing import FunctionTransformer
 import lightgbm as lgb
 from lightgbm import LGBMRegressor
 from xgboost import XGBRegressor
@@ -18,6 +21,7 @@ from catboost import CatBoostRegressor
 from config import Config
 from util import ShuffledGroupKFold
 from metric import quadratic_weighted_kappa
+from preprocess_tools import FeatureSelector
 
 config = Config()
 
@@ -26,30 +30,38 @@ class InnerCVRunner:
         self.n_repeats = 1
         self.n_splits = 2
         self.tuning_seed = tuning_seed
+        self.selector = FeatureSelector()
 
     def objective(self, trial, model_type: str, tr_x: pd.DataFrame, tr_y: pd.Series, va_x: pd.DataFrame, va_y: pd.Series) -> float:
         if model_type == 'lightgbm':
             params_range = {
-                'learning_rate': trial.suggest_float('lightgbm_learning_rate', 0.00005, 0.005, log=True),
-                'reg_alpha': trial.suggest_float('lightgbm_reg_alpha', 1e-1, 20, log=True),
-                'reg_lambda': trial.suggest_float('lightgbm_reg_labmda', 1e-1, 20, log=True),
-                'num_leaves': trial.suggest_int('lightgbm_num_leaves', 8, 32),
-                'colsample_bytree': trial.suggest_float('lightgbm_colsample_bytree', 0.3, 0.7),
-                'subsample': trial.suggest_float('lightgbm_subsample', 0.3, 0.7),
-                'subsample_freq': trial.suggest_int('lightgbm_subsample_freq', 3, 10),
-                'min_child_samples': trial.suggest_int('lightgbm_min_child_samples', 50, 150),
-                'max_depth': trial.suggest_int('lightgbm_max_depth', 2, 6),
-                'random_state': self.tuning_seed,
-                'verbose': -1,
-                'n_estimators': 5000
+                'learning_rate': trial.suggest_float('lightgbm_learning_rate', 0.0001, 0.1, log=True),
+                'reg_alpha': trial.suggest_float('lightgbm_reg_alpha', 1e-4, 10, log=True),
+                'reg_lambda': trial.suggest_float('lightgbm_reg_labmda', 1e-4, 10, log=True),
+                'num_leaves': trial.suggest_int('lightgbm_num_leaves', 16, 128),
+                'colsample_bytree': trial.suggest_float('lightgbm_colsample_bytree', 0.4, 0.9),
+                'subsample': trial.suggest_float('lightgbm_subsample', 0.4, 0.9),
+                'subsample_freq': trial.suggest_int('lightgbm_subsample_freq', 1, 10),
+                'min_child_samples': trial.suggest_int('lightgbm_min_child_samples', 10, 100),
+                'max_depth': trial.suggest_int('lightgbm_max_depth', 3, 10),
                 # 'device': 'gpu'
             }
-            model = LGBMRegressor(**params_range)
+            model_pipe = self.build_model(is_pipeline=True, params_range=params_range)
+            ### pipelineで完結したいが、eval_setを使う場合は別で適用する必要がありそう。将来的に改善したい。
+            # 前処理部分のみを先にfit
+            preprocessor = model_pipe.named_steps['preprocessor']
+            preprocessor.fit(tr_x)
+
+            # 前処理を適用（eval_setでva_xを利用するため）
+            tr_x_transformed = preprocessor.transform(tr_x)
+            va_x_transformed = preprocessor.transform(va_x)
+
+            model = model_pipe.named_steps['model']
             model.fit(
-                 tr_x
+                 tr_x_transformed
                 ,tr_y
-                ,eval_set=[(va_x, va_y)]
-                # ,eval_metric=lambda y_true, y_pred: ('qwk', quadratic_weighted_kappa(y_true, y_pred), True)
+                ,eval_set=[(tr_x_transformed, tr_y), (va_x_transformed, va_y)]
+                ,eval_names=['train', 'valid']
                 ,eval_metric='rmse'
                 ,callbacks=[
                     lgb.early_stopping(stopping_rounds=50, verbose=False)
@@ -86,7 +98,7 @@ class InnerCVRunner:
         else:
             raise ValueError(f"Unsupported model type: {model_type}")
 
-        va_y_pred = model.predict(va_x)
+        va_y_pred = model_pipe.predict(va_x)
         
         rmse = mean_squared_error(va_y, va_y_pred, squared=False)
         # qwk = quadratic_weighted_kappa(va_y.round().astype(int), va_y_pred.round().astype(int))
@@ -95,6 +107,9 @@ class InnerCVRunner:
         return rmse
     
     def parameter_tuning(self, all_x: pd.DataFrame, all_y: pd.Series, all_group: pd.Series, n_trials: int = 100):
+        # FeatureSelectorをfitする
+        self.selector.fit(all_x)
+        
         model_types = ['lightgbm']
         best_params_all = {}
 
@@ -136,3 +151,68 @@ class InnerCVRunner:
                 best_params_all[model_type] = best_params_list[best_index]
 
         return best_params_all
+
+        def build_model(self, is_pipeline: bool, params_range: dict):
+        """
+        クロスバリデーションでのfoldを指定して、モデルの作成を行う
+
+        :param i_fold: foldの番号
+        :param params: チューニングされたパラメータ
+        :return: モデルのインスタンス
+        """
+        # ラン名、fold、モデルのクラスからモデルを作成する
+        if is_pipeline:
+            # model = self.build_pipeline(self.run_name, fold_name, params)
+            lgb_model = LGBMRegressor(
+                 **params_range
+                ,random_state = self.tuning_seed
+                ,verbose = -1
+                ,n_estimators = 5000
+                # ,device = 'gpu'
+                # ,gpu_device_id = 0
+                ,num_threads = 4
+            )
+
+            # カラムの型に応じて異なる変換を適用するColumnTransformer
+            numeric_features = self.selector.get_feature_names_out(feature_types=['int64', 'float64'])
+            categorical_features = self.selector.get_feature_names_out(feature_types=['category', 'object'])
+            boolean_features = self.selector.get_feature_names_out(feature_types=['bool'])
+
+            preprocessor = ColumnTransformer(
+                transformers=[
+                    ('num', Pipeline([
+                        ('imputer', SimpleImputer(strategy='mean')),
+                        ('scaler', StandardScaler())
+                    ]), numeric_features),
+                    ('cat', Pipeline([
+                        ('to_string', FunctionTransformer(lambda x: x.astype(str))),
+                        ('imputer', SimpleImputer(strategy='constant', fill_value='missing')),
+                        ('encoder', OrdinalEncoder(handle_unknown='use_encoded_value', unknown_value=-1))
+                    ]), categorical_features),
+                    ('bool', Pipeline([
+                        ('to_int', FunctionTransformer(lambda x: x.astype(float))),
+                        ('imputer', SimpleImputer(strategy='constant', fill_value=0)),
+                        ('to_bool', FunctionTransformer(lambda x: x.astype(int)))
+                    ]), boolean_features)
+                ],
+                remainder='passthrough'
+            )
+
+            pipeline = Pipeline([
+                ('preprocessor', preprocessor),
+                ('model', clone(lgb_model))
+            ])
+            return pipeline
+        else:
+            # model = self.model_cls(self.run_name, fold_name, params)
+            lgb_model = LGBMRegressor(
+                 **params_range
+                ,random_state = self.tuning_seed
+                ,verbose = -1
+                ,n_estimators = 5000
+                # ,device = 'gpu'
+                # ,gpu_device_id = 0
+                ,num_threads = 4
+            )
+
+            return lgb_model

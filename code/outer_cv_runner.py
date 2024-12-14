@@ -10,6 +10,10 @@ from sklearn.model_selection import train_test_split
 from sklearn.ensemble import VotingRegressor
 from sklearn.base import clone
 from sklearn.impute import SimpleImputer
+from sklearn.preprocessing import OrdinalEncoder
+from preprocess_tools import FeatureSelector
+from sklearn.compose import ColumnTransformer
+from sklearn.preprocessing import FunctionTransformer
 import lightgbm as lgb
 from lightgbm import LGBMRegressor
 from xgboost import XGBRegressor
@@ -47,6 +51,7 @@ class OuterCVRunner:
         self.dtype_dict = {}
         self.cv_seed = cv_seed
         self.tuning_seed = tuning_seed
+        self.selector = FeatureSelector()
 
     def train_fold(self, i_fold: Union[int, str], cv_results: dict):
         """
@@ -105,13 +110,23 @@ class OuterCVRunner:
             with open(f"../model/params_dict_{i_fold}.json", "w") as f:
                 json.dump(self.params_dict, f)
 
-            model = self.build_model(is_pipeline=False, i_fold=i_fold, params_dict=self.params_dict)
-            # model.fit(tr_x, tr_y)
+            model_pipe = self.build_model(is_pipeline=True, params_dict=self.params_dict)
+            
+            ### pipelineで完結したいが、eval_setを使う場合は別で適用する必要がありそう。将来的に改善したい。
+            # 前処理部分のみを先にfit
+            preprocessor = model_pipe.named_steps['preprocessor']
+            preprocessor.fit(tr_x)
+
+            # 前処理を適用（eval_setでva_xを利用するため）
+            tr_x_transformed = preprocessor.transform(tr_x)
+            va_x_transformed = preprocessor.transform(va_x)
+
+            model = model_pipe.named_steps['model']
             model.fit(
-                 tr_x
+                 tr_x_transformed
                 ,tr_y
-                ,eval_set=[(tr_x, tr_y), (va_x, va_y)]
-                # ,eval_metric=lambda y_true, y_pred: ('qwk', quadratic_weighted_kappa(y_true, y_pred), True)
+                ,eval_set=[(tr_x_transformed, tr_y), (va_x_transformed, va_y)]
+                ,eval_names=['train', 'valid']
                 ,eval_metric='rmse'
                 ,callbacks=[
                     lgb.early_stopping(stopping_rounds=50, verbose=False)
@@ -141,7 +156,7 @@ class OuterCVRunner:
             # cv_results['params'].append(best_params)
 
             # モデル、インデックス、予測値、評価を返す
-            return model, cv_results
+            return model_pipe, cv_results
         else:
             # 学習データ全てで学習を行う
             model_pipe = self.build_model(is_pipeline=False, i_fold=i_fold, params=self.params)
@@ -330,29 +345,65 @@ class OuterCVRunner:
 
         logger.info(f'{self.run_name} - end prediction all')
 
-    def build_model(self, is_pipeline: bool, i_fold: Union[int, str], params_dict: dict):
+    def build_model(self, is_pipeline: bool, params_dict: dict):
         """
         クロスバリデーションでのfoldを指定して、モデルの作成を行う
 
-        :param i_fold: foldの番号
         :param params: チューニングされたパラメータ
         :return: モデルのインスタンス
         """
-        fold_name = str(i_fold)
         # ラン名、fold、モデルのクラスからモデルを作成する
         if is_pipeline:
-            # model = self.build_pipeline(self.run_name, fold_name, params)
-            lgb_model = LGBMRegressor(**params_dict['lightgbm'], random_state=self.cv_seed, verbose=-1, n_estimators=5000)
+            lgb_model = LGBMRegressor(
+                 **params_dict['lightgbm']
+                ,random_state = self.cv_seed
+                ,verbose = -1
+                ,n_estimators = 5000
+                # ,device = 'gpu'
+                # ,gpu_device_id = 0
+                ,num_threads = 4
+            )
+
+            # カラムの型に応じて異なる変換を適用するColumnTransformer
+            numeric_features = self.selector.get_feature_names_out(feature_types=['int64', 'float64'])
+            categorical_features = self.selector.get_feature_names_out(feature_types=['category', 'object'])
+            boolean_features = self.selector.get_feature_names_out(feature_types=['bool'])
+
+            preprocessor = ColumnTransformer(
+                transformers=[
+                    ('num', Pipeline([
+                        ('imputer', SimpleImputer(strategy='mean')),
+                        ('scaler', StandardScaler())
+                    ]), numeric_features),
+                    ('cat', Pipeline([
+                        ('to_string', FunctionTransformer(lambda x: x.astype(str))),
+                        ('imputer', SimpleImputer(strategy='constant', fill_value='missing')),
+                        ('encoder', OrdinalEncoder(handle_unknown='use_encoded_value', unknown_value=-1))
+                    ]), categorical_features),
+                    ('bool', Pipeline([
+                        ('to_int', FunctionTransformer(lambda x: x.astype(float))),
+                        ('imputer', SimpleImputer(strategy='constant', fill_value=0)),
+                        ('to_bool', FunctionTransformer(lambda x: x.astype(int)))
+                    ]), boolean_features)
+                ],
+                remainder='passthrough'
+            )
 
             pipeline = Pipeline([
-                ('imputer', SimpleImputer(strategy='mean')),
-                ('scaler', StandardScaler()),
+                ('preprocessor', preprocessor),
                 ('model', clone(lgb_model))
             ])
             return pipeline
         else:
-            # model = self.model_cls(self.run_name, fold_name, params)
-            lgb_model = LGBMRegressor(**params_dict['lightgbm'], random_state=self.cv_seed, verbose=-1, n_estimators=5000)
+            lgb_model = LGBMRegressor(
+                 **params_dict['lightgbm']
+                ,random_state = self.cv_seed
+                ,verbose = -1
+                ,n_estimators = 5000
+                # ,device = 'gpu'
+                # ,gpu_device_id = 0
+                ,num_threads = 4
+            )
 
             return lgb_model
     
@@ -367,15 +418,15 @@ class OuterCVRunner:
         
         # 拡張子に基づいて処理を分岐
         if file_extension in ['pkl', 'pickle']:
-            x_train = pd.read_pickle(config.train_preprocessed_file_path).drop(config.target_column, axis=1)
+            x_train = pd.read_pickle(config.train_column_cleaned_file_path).drop(config.target_column, axis=1)
         elif file_extension == 'csv':
-            x_train = pd.read_csv(config.train_preprocessed_file_path).drop(config.target_column, axis=1)
+            x_train = pd.read_csv(config.train_column_cleaned_file_path).drop(config.target_column, axis=1)
         elif file_extension == 'xlsx':
-            x_train = pd.read_excel(config.train_preprocessed_file_path).drop(config.target_column, axis=1)
+            x_train = pd.read_excel(config.train_column_cleaned_file_path).drop(config.target_column, axis=1)
         elif file_extension == 'parquet':
-            x_train = pd.read_parquet(config.train_preprocessed_file_path).drop(config.target_column, axis=1)
+            x_train = pd.read_parquet(config.train_column_cleaned_file_path).drop(config.target_column, axis=1)
         elif file_extension == 'jsonl':
-            x_train = pd.read_json(config.train_preprocessed_file_path, lines=True).drop(config.target_column, axis=1)
+            x_train = pd.read_json(config.train_column_cleaned_file_path, lines=True).drop(config.target_column, axis=1)
         else:
             # 未対応の形式に対するエラーを発生させる
             raise ValueError(f"Unsupported file format: '{file_extension}'. Supported formats are: pkl, pickle, csv, xlsx, parquet, jsonl.")
@@ -384,20 +435,33 @@ class OuterCVRunner:
         for column in x_train.columns:
             col_data = x_train[column]
             
-            # Try converting to integer
-            try:
-                x_train[column] = col_data.astype(int)
-            except ValueError:
-                # If integer conversion fails, try converting to float
+            # まずbool型への変換を試みる
+            unique_values = col_data.dropna().unique()
+            if len(unique_values) <= 2 and set(unique_values).issubset({0, 1, True, False, '0', '1', 'True', 'False', 'true', 'false'}):
+                x_train[column] = col_data.map({'True': True, 'true': True, '1': True, 1: True,
+                                              'False': False, 'false': False, '0': False, 0: False}).astype(bool)
+                continue
+
+            # Noneやnanを含むかチェック
+            has_null = col_data.isna().any()
+            
+            if not has_null:
+                # Nullを含まない場合のみint変換を試みる
                 try:
-                    x_train[column] = col_data.astype(float)
-                except ValueError:
-                    # If float conversion fails, keep as object
-                    x_train[column] = col_data.astype(object)
-        
-        # object型のカラムをcategory型に変換
-        for col in x_train.select_dtypes(include=['object']).columns:
-            x_train[col] = x_train[col].astype('category')
+                    x_train[column] = pd.to_numeric(col_data, downcast='integer')
+                    continue
+                except (ValueError, TypeError):
+                    pass
+            
+            # float変換を試みる
+            try:
+                x_train[column] = pd.to_numeric(col_data, downcast='float')
+                continue
+            except (ValueError, TypeError):
+                pass
+
+            # 上記の変換が全て失敗した場合はcategory型として扱う
+            x_train[column] = col_data.astype('category')
 
         # group_columnをcategory型に変換
         if config.group_column is not None:
@@ -417,19 +481,19 @@ class OuterCVRunner:
         :return: 学習データの目的変数
         """
         # 学習データのファイルパスから拡張子を取得
-        file_extension = config.train_preprocessed_file_path.split('.')[-1].lower()
+        file_extension = config.train_column_cleaned_file_path.split('.')[-1].lower()
 
         # 拡張子に基づいて処理を分岐
         if file_extension in ['pkl', 'pickle']:
-            y_train = pd.read_pickle(config.train_preprocessed_file_path)[config.target_column]
+            y_train = pd.read_pickle(config.train_column_cleaned_file_path)[config.target_column]
         elif file_extension == 'csv':
-            y_train = pd.read_csv(config.train_preprocessed_file_path)[config.target_column]
+            y_train = pd.read_csv(config.train_column_cleaned_file_path)[config.target_column]
         elif file_extension == 'xlsx':
-            y_train = pd.read_excel(config.train_preprocessed_file_path)[config.target_column]
+            y_train = pd.read_excel(config.train_column_cleaned_file_path)[config.target_column]
         elif file_extension == 'parquet':
-            y_train = pd.read_parquet(config.train_preprocessed_file_path)[config.target_column]
+            y_train = pd.read_parquet(config.train_column_cleaned_file_path)[config.target_column]
         elif file_extension == 'jsonl':
-            y_train = pd.read_json(config.train_preprocessed_file_path, lines=True)[config.target_column]
+            y_train = pd.read_json(config.train_column_cleaned_file_path, lines=True)[config.target_column]
         else:
             # 未対応の形式に対するエラーを発生させる
             raise ValueError(f"Unsupported file format: '{file_extension}'. Supported formats are: pkl, pickle, csv, xlsx, parquet, jsonl.")
