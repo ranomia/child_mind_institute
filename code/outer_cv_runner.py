@@ -74,6 +74,9 @@ class OuterCVRunner:
             train_group = train_x[config.group_column]
             train_x = train_x.drop(config.group_column, axis=1)
 
+        # FeatureSelectorをfitする
+        self.selector.fit(train_x)
+
         if is_validation:
             # 学習データ・バリデーションデータをセットする
             tr_idx, tu_idx, va_idx = self.load_index_fold_inner(i_fold)
@@ -89,7 +92,7 @@ class OuterCVRunner:
             # ハイパーパラメータのチューニングを行う
             if config.group_column is None:
                 inner_runner = InnerCVRunner(tuning_seed=self.tuning_seed)
-                tuned_params_dict_flatten = inner_runner.parameter_tuning(tu_x, tu_y, None, n_trials=10)
+                tuned_params_dict_flatten = inner_runner.parameter_tuning(tu_x, tu_y, None, n_trials=100)
             else:
                 inner_runner = InnerCVRunner(tuning_seed=self.tuning_seed)
                 tuned_params_dict_flatten = inner_runner.parameter_tuning(tu_x, tu_y, tu_g, n_trials=100)
@@ -129,13 +132,13 @@ class OuterCVRunner:
                 ,eval_names=['train', 'valid']
                 ,eval_metric='rmse'
                 ,callbacks=[
-                    lgb.early_stopping(stopping_rounds=50, verbose=False)
+                    lgb.early_stopping(stopping_rounds=30, verbose=False)
                 ]
             )
 
             # 学習データ・バリデーションデータへの予測・評価を行う
-            tr_y_pred = model.predict(tr_x)
-            va_y_pred = model.predict(va_x)
+            tr_y_pred = model_pipe.predict(tr_x)
+            va_y_pred = model_pipe.predict(va_x)
 
             # 評価指標の算出
             cv_results['tr_rmse'].append(root_mean_squared_error(tr_y, tr_y_pred))
@@ -205,13 +208,13 @@ class OuterCVRunner:
             logger.info(f'{self.run_name} fold {i_fold} - end training - rmse score {cv_results["va_rmse"][i_fold]}')
 
             # モデルを保存する
-            model.booster_.save_model(f'../model/model_{self.run_name}_{i_fold}.txt')
+            model.named_steps['model'].booster_.save_model(f'../model/model_{self.run_name}_{i_fold}.txt')
         
             # 学習曲線のプロット
-            eval_results = model.evals_result_
+            eval_results = model.named_steps['model'].evals_result_
             plt.figure(figsize=(10, 6))
-            plt.plot(eval_results['training']['rmse'], label='Training Loss')
-            plt.plot(eval_results['valid_1']['rmse'], label='Validation Loss')
+            plt.plot(eval_results['train']['rmse'], label='Training Loss')
+            plt.plot(eval_results['valid']['rmse'], label='Validation Loss')
             plt.xlabel('Iteration')
             plt.ylabel('RMSE')
             plt.title('Learning Curve')
@@ -250,16 +253,42 @@ class OuterCVRunner:
             plt.savefig(f'../model/res_{self.run_name}_{i_fold}.png')
 
             # shap
-            explainer = shap.Explainer(model, train_x.iloc[cv_results['tr_idx'][i_fold]])
-            shap_values = explainer.shap_values(train_x.iloc[cv_results['va_idx'][i_fold]])
+            train_data = train_x.iloc[cv_results['tr_idx'][i_fold]]
+            valid_data = train_x.iloc[cv_results['va_idx'][i_fold]]
+            
+            # パイプラインの前処理を適用
+            train_processed = model.named_steps['preprocessor'].transform(train_data)
+            valid_processed = model.named_steps['preprocessor'].transform(valid_data)
+            
+            # 特徴量名を取得
+            numeric_features = self.selector.get_feature_names_out(feature_types=['int64', 'float64', 'int32', 'float32', 'int16', 'float16', 'int8', 'float8'])
+            categorical_features = self.selector.get_feature_names_out(feature_types=['category', 'object'])
+            boolean_features = self.selector.get_feature_names_out(feature_types=['bool'])
+            
+            feature_names = (
+                numeric_features +
+                [f"{f}_encoded" for f in categorical_features] +
+                [f"{f}_bool" for f in boolean_features]
+            )
+            
+            # SHAPの計算
+            explainer = shap.TreeExplainer(
+                model.named_steps['model'],
+                feature_names=feature_names,
+                feature_perturbation="interventional"
+            )
+            shap_values = explainer.shap_values(valid_processed)
+            
+            # SHAPプロット
             plt.figure(figsize=(10, 6))
             shap.summary_plot(
-                 shap_values=shap_values
-                ,features=train_x.iloc[cv_results['va_idx'][i_fold]]
-                ,feature_names=train_x.columns
-                ,show=False
+                shap_values=shap_values,
+                features=valid_processed,
+                feature_names=feature_names,
+                show=False
             )
             plt.title(f'SHAP Summary Plot for {self.run_name}_{i_fold}')
+            plt.tight_layout()
             plt.savefig(f'../model/shap_{self.run_name}_{i_fold}.png')
             plt.close()
 
@@ -365,7 +394,7 @@ class OuterCVRunner:
             )
 
             # カラムの型に応じて異なる変換を適用するColumnTransformer
-            numeric_features = self.selector.get_feature_names_out(feature_types=['int64', 'float64'])
+            numeric_features = self.selector.get_feature_names_out(feature_types=['int64', 'float64', 'int32', 'float32', 'int16', 'float16', 'int8', 'float8'])
             categorical_features = self.selector.get_feature_names_out(feature_types=['category', 'object'])
             boolean_features = self.selector.get_feature_names_out(feature_types=['bool'])
 
@@ -414,7 +443,7 @@ class OuterCVRunner:
         :return: 学習データの特徴量
         """
         # 学習データのファイルパスから拡張子を取得
-        file_extension = config.train_preprocessed_file_path.split('.')[-1].lower()
+        file_extension = config.train_column_cleaned_file_path.split('.')[-1].lower()
         
         # 拡張子に基づいて処理を分岐
         if file_extension in ['pkl', 'pickle']:

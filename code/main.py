@@ -55,7 +55,7 @@ if __name__ == '__main__':
     # lightGBMによる学習・予測
     for run_i in range(1):
         outer_runner = OuterCVRunner(
-             run_name = 'lgb'+str(run_i)
+             run_name = 'lgb4_'+str(run_i)
             ,model_cls = None
             ,params_dict = {}
             ,cv_seed = config.cv_seed

@@ -35,15 +35,15 @@ class InnerCVRunner:
     def objective(self, trial, model_type: str, tr_x: pd.DataFrame, tr_y: pd.Series, va_x: pd.DataFrame, va_y: pd.Series) -> float:
         if model_type == 'lightgbm':
             params_range = {
-                'learning_rate': trial.suggest_float('lightgbm_learning_rate', 0.0001, 0.1, log=True),
-                'reg_alpha': trial.suggest_float('lightgbm_reg_alpha', 1e-4, 10, log=True),
-                'reg_lambda': trial.suggest_float('lightgbm_reg_labmda', 1e-4, 10, log=True),
-                'num_leaves': trial.suggest_int('lightgbm_num_leaves', 16, 128),
-                'colsample_bytree': trial.suggest_float('lightgbm_colsample_bytree', 0.4, 0.9),
-                'subsample': trial.suggest_float('lightgbm_subsample', 0.4, 0.9),
-                'subsample_freq': trial.suggest_int('lightgbm_subsample_freq', 1, 10),
-                'min_child_samples': trial.suggest_int('lightgbm_min_child_samples', 10, 100),
-                'max_depth': trial.suggest_int('lightgbm_max_depth', 3, 10),
+                'learning_rate': trial.suggest_float('lightgbm_learning_rate', 0.0001, 0.01, log=True),
+                'reg_alpha': trial.suggest_float('lightgbm_reg_alpha', 1e-2, 100, log=True),
+                'reg_lambda': trial.suggest_float('lightgbm_reg_labmda', 1e-2, 100, log=True),
+                'num_leaves': trial.suggest_int('lightgbm_num_leaves', 4, 32),
+                'colsample_bytree': trial.suggest_float('lightgbm_colsample_bytree', 0.6, 0.9),
+                'subsample': trial.suggest_float('lightgbm_subsample', 0.6, 0.9),
+                'subsample_freq': trial.suggest_int('lightgbm_subsample_freq', 3, 7),
+                'min_child_samples': trial.suggest_int('lightgbm_min_child_samples', 50, 300),
+                'max_depth': trial.suggest_int('lightgbm_max_depth', 2, 6),
                 # 'device': 'gpu'
             }
             model_pipe = self.build_model(is_pipeline=True, params_range=params_range)
@@ -64,7 +64,7 @@ class InnerCVRunner:
                 ,eval_names=['train', 'valid']
                 ,eval_metric='rmse'
                 ,callbacks=[
-                    lgb.early_stopping(stopping_rounds=50, verbose=False)
+                    lgb.early_stopping(stopping_rounds=30, verbose=False)
                 ]
             )
 
@@ -152,7 +152,7 @@ class InnerCVRunner:
 
         return best_params_all
 
-        def build_model(self, is_pipeline: bool, params_range: dict):
+    def build_model(self, is_pipeline: bool, params_range: dict):
         """
         クロスバリデーションでのfoldを指定して、モデルの作成を行う
 
@@ -174,7 +174,7 @@ class InnerCVRunner:
             )
 
             # カラムの型に応じて異なる変換を適用するColumnTransformer
-            numeric_features = self.selector.get_feature_names_out(feature_types=['int64', 'float64'])
+            numeric_features = self.selector.get_feature_names_out(feature_types=['int64', 'float64', 'int32', 'float32', 'int16', 'float16', 'int8', 'float8'])
             categorical_features = self.selector.get_feature_names_out(feature_types=['category', 'object'])
             boolean_features = self.selector.get_feature_names_out(feature_types=['bool'])
 
