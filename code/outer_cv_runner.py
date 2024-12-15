@@ -20,6 +20,7 @@ from xgboost import XGBRegressor
 from catboost import CatBoostRegressor
 import matplotlib.pyplot as plt
 import shap
+from sklearn.ensemble import StackingRegressor
 
 from typing import Callable, List, Optional, Tuple, Union
 
@@ -98,25 +99,13 @@ class OuterCVRunner:
                 inner_runner = InnerCVRunner(tuning_seed=self.tuning_seed)
                 tuned_params_dict_flatten = inner_runner.parameter_tuning(tu_x, tu_y, tu_g, n_trials=100)
             
-            tuned_params_dict = {
-                'lightgbm': {},
-                'xgboost': {},
-                'catboost': {}
-            }
+            # パラメータの更新
+            tuned_params_dict = self.format_tuned_params(tuned_params_dict_flatten)
+            self.params_dict = self.update_params_dict(self.params_dict, tuned_params_dict)
 
-            for model_type in tuned_params_dict_flatten.keys():
-                for param_name, param_value in tuned_params_dict_flatten[model_type].items():
-                    tuned_params_dict[model_type][param_name.replace(model_type+'_', '')] = param_value
-
-            # params_dictの更新
-            self.params_dict = self.update_params_dict(params_dict=self.params_dict, tuned_params_dict=tuned_params_dict)
-
-            with open(f"{self.model_dir}/params_dict_{i_fold}.json", "w") as f:
-                json.dump(self.params_dict, f)
-
-            model_pipe = self.build_model(is_pipeline=True, params_dict=self.params_dict)
+            # 3層スタッキングモデルの構築
+            model_pipe = self.build_stacking_model(self.params_dict)
             
-            ### pipelineで完結したいが、eval_setを使う場合は別で適用する必要がありそう。将来的に改善したい。
             # 前処理部分のみを先にfit
             preprocessor = model_pipe.named_steps['preprocessor']
             preprocessor.fit(tr_x)
@@ -125,6 +114,7 @@ class OuterCVRunner:
             tr_x_transformed = preprocessor.transform(tr_x)
             va_x_transformed = preprocessor.transform(va_x)
 
+            # スタッキングモデルの学習
             model = model_pipe.named_steps['model']
             model.fit(
                  tr_x_transformed
@@ -637,3 +627,117 @@ class OuterCVRunner:
             params_dict[key].update(value)
         
         return params_dict
+
+    def format_tuned_params(self, tuned_params_dict_flatten: dict) -> dict:
+        """
+        InnerCVRunnerでチューニングされたパラメータをフォーマットするためのプログラム
+        :param tuned_params_dict_flatten: InnerCVRunnerでチューニングされたパラメータ
+        :return: フォーマットされたパラメータ
+        """
+        tuned_params_dict = {
+            'lightgbm': {},
+            'xgboost': {},
+            'catboost': {}
+        }
+
+        for model_type in tuned_params_dict_flatten.keys():
+            for param_name, param_value in tuned_params_dict_flatten[model_type].items():
+                tuned_params_dict[model_type][param_name.replace(model_type+'_', '')] = param_value
+
+        return tuned_params_dict
+
+    def build_stacking_model(self, params_dict: dict):
+        """3層スタッキングモデルを構築する"""
+        # 第1層のモデル
+        lgb1 = LGBMRegressor(
+            **params_dict['lightgbm'],
+            random_state=self.cv_seed,
+            verbose=-1,
+            n_estimators=5000,
+            num_threads=4
+        )
+
+        # 第2層のモデル（パラメータを少し変更）
+        params_layer2 = params_dict['lightgbm'].copy()
+        params_layer2.update({
+            'learning_rate': params_layer2['learning_rate'] * 0.8,
+            'num_leaves': max(4, params_layer2['num_leaves'] // 2),
+            'min_child_samples': params_layer2['min_child_samples'] + 50
+        })
+        lgb2 = LGBMRegressor(
+            **params_layer2,
+            random_state=self.cv_seed + 1,
+            verbose=-1,
+            n_estimators=5000,
+            num_threads=4
+        )
+
+        # 第3層のモデル（さらにパラメータを調整）
+        params_layer3 = params_dict['lightgbm'].copy()
+        params_layer3.update({
+            'learning_rate': params_layer3['learning_rate'] * 0.6,
+            'num_leaves': max(4, params_layer3['num_leaves'] // 3),
+            'min_child_samples': params_layer3['min_child_samples'] + 100
+        })
+        lgb3 = LGBMRegressor(
+            **params_layer3,
+            random_state=self.cv_seed + 2,
+            verbose=-1,
+            n_estimators=5000,
+            num_threads=4
+        )
+
+        # 最終層のモデル
+        final_estimator = LGBMRegressor(
+            learning_rate=0.01,
+            num_leaves=8,
+            min_child_samples=200,
+            random_state=self.cv_seed + 3,
+            verbose=-1,
+            n_estimators=1000,
+            num_threads=4
+        )
+
+        # スタッキングモデルの構築
+        stacking = StackingRegressor(
+            estimators=[
+                ('lgb1', lgb1),
+                ('lgb2', lgb2),
+                ('lgb3', lgb3)
+            ],
+            final_estimator=final_estimator,
+            cv=5,
+            n_jobs=-1,
+            verbose=0
+        )
+
+        # 前処理パイプラインの構築
+        numeric_features = self.selector.get_feature_names_out(feature_types=['int64', 'float64', 'int32', 'float32', 'int16', 'float16', 'int8', 'float8'])
+        categorical_features = self.selector.get_feature_names_out(feature_types=['category', 'object'])
+        boolean_features = self.selector.get_feature_names_out(feature_types=['bool'])
+
+        preprocessor = ColumnTransformer(
+            transformers=[
+                ('num', Pipeline([
+                    ('imputer', SimpleImputer(strategy='mean')),
+                    ('scaler', StandardScaler())
+                ]), numeric_features),
+                ('cat', Pipeline([
+                    ('imputer', SimpleImputer(strategy='constant', fill_value='missing')),
+                    ('encoder', OrdinalEncoder(handle_unknown='use_encoded_value', unknown_value=-1))
+                ]), categorical_features),
+                ('bool', Pipeline([
+                    ('imputer', SimpleImputer(strategy='constant', fill_value=0)),
+                    ('to_int', FunctionTransformer(lambda x: x.astype(float)))
+                ]), boolean_features)
+            ],
+            remainder='passthrough'
+        )
+
+        # 最終的なパイプライン
+        pipeline = Pipeline([
+            ('preprocessor', preprocessor),
+            ('model', stacking)
+        ])
+
+        return pipeline
