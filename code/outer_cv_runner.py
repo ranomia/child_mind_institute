@@ -47,7 +47,7 @@ class OuterCVRunner:
         self.run_name = run_name
         self.model_cls = model_cls
         self.params_dict = params_dict
-        self.n_fold = 10
+        self.n_fold = 3
         self.dtype_dict = {}
         self.cv_seed = cv_seed
         self.tuning_seed = tuning_seed
@@ -133,7 +133,7 @@ class OuterCVRunner:
                 ,eval_names=['train', 'valid']
                 ,eval_metric='rmse'
                 ,callbacks=[
-                    lgb.early_stopping(stopping_rounds=30, verbose=False)
+                     lgb.early_stopping(stopping_rounds=30, verbose=False)
                 ]
             )
 
