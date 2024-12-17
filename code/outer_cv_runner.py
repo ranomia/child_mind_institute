@@ -189,22 +189,53 @@ class OuterCVRunner:
             model, cv_results = self.train_fold(i_fold, cv_results)
             logger.info(f'{self.run_name} fold {i_fold} - end training - rmse score {cv_results["va_rmse"][i_fold]}')
 
-            # モデルを保存する
-            model.named_steps['model'].booster_.save_model(
-                f'{self.model_dir}/model_{self.run_name}_{i_fold}.txt'
-            )
-        
-            # 学習曲線のプロット
-            eval_results = model.named_steps['model'].evals_result_
-            plt.figure(figsize=(10, 6))
-            plt.plot(eval_results['train']['rmse'], label='Training Loss')
-            plt.plot(eval_results['valid']['rmse'], label='Validation Loss')
-            plt.xlabel('Iteration')
-            plt.ylabel('RMSE')
-            plt.title('Learning Curve')
-            plt.ylim([0, 1.0])
-            plt.legend()
+            # スタッキングモデルの各レイヤーのモデルを保存
+            stacking_model = model.named_steps['model']
+            
+            # ベースモデルの保存
+            for idx, estimator in enumerate(stacking_model.estimators_):
+                if hasattr(estimator, 'booster_'):  # LightGBMの場合
+                    estimator.booster_.save_model(
+                        f'{self.model_dir}/model_{self.run_name}_{i_fold}_base{idx}.txt'
+                    )
+            
+            # 最終モデルの保存
+            if hasattr(stacking_model.final_estimator_, 'booster_'):  # LightGBMの場合
+                stacking_model.final_estimator_.booster_.save_model(
+                    f'{self.model_dir}/model_{self.run_name}_{i_fold}_final.txt'
+                )
+            
+            # 学習曲線のプロット（各ベースモデルと最終モデル）
+            plt.figure(figsize=(15, 5))
+            
+            # ベースモデルの学習曲線
+            for idx, estimator in enumerate(stacking_model.estimators_):
+                if hasattr(estimator, 'evals_result_'):
+                    plt.subplot(1, len(stacking_model.estimators_) + 1, idx + 1)
+                    eval_results = estimator.evals_result_
+                    plt.plot(eval_results['train']['rmse'], label='Training Loss')
+                    plt.plot(eval_results['valid']['rmse'], label='Validation Loss')
+                    plt.xlabel('Iteration')
+                    plt.ylabel('RMSE')
+                    plt.title(f'Learning Curve - Base Model {idx}')
+                    plt.ylim([0, 1.0])
+                    plt.legend()
+            
+            # 最終モデルの学習曲線
+            if hasattr(stacking_model.final_estimator_, 'evals_result_'):
+                plt.subplot(1, len(stacking_model.estimators_) + 1, len(stacking_model.estimators_) + 1)
+                eval_results = stacking_model.final_estimator_.evals_result_
+                plt.plot(eval_results['train']['rmse'], label='Training Loss')
+                plt.plot(eval_results['valid']['rmse'], label='Validation Loss')
+                plt.xlabel('Iteration')
+                plt.ylabel('RMSE')
+                plt.title('Learning Curve - Final Model')
+                plt.ylim([0, 1.0])
+                plt.legend()
+            
+            plt.tight_layout()
             plt.savefig(f'{self.model_dir}/lr_{self.run_name}_{i_fold}.png')
+            plt.close()
 
             # 残差のプロット
             tr_res = cv_results['tr_y'][i_fold] - cv_results['tr_y_pred'][i_fold]
