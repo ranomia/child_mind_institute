@@ -727,6 +727,7 @@ class OuterCVRunner:
                     ('encoder', OrdinalEncoder(handle_unknown='use_encoded_value', unknown_value=-1))
                 ]), categorical_features),
                 ('bool', Pipeline([
+                    ('to_float', FunctionTransformer(lambda x: x.astype(float))),  # 最初にfloat型に変換
                     ('imputer', SimpleImputer(strategy='constant', fill_value=0)),
                     ('to_int', FunctionTransformer(lambda x: x.astype(float)))
                 ]), boolean_features)
