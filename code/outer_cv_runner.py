@@ -647,9 +647,25 @@ class OuterCVRunner:
         return tuned_params_dict
 
     def build_stacking_model(self, params_dict: dict):
-        """3層スタッキングモデルを構築する"""
         # 第1層のモデル
-        lgb1 = LGBMRegressor(
+        class EarlyStoppingLGBM(LGBMRegressor):
+            def fit(self, X, y, **kwargs):
+                # 検証データを作成
+                X_train, X_val, y_train, y_val = train_test_split(
+                    X, y, test_size=0.2, random_state=self.random_state
+                )
+                # early_stoppingを使用して学習
+                super().fit(
+                    X_train, y_train,
+                    eval_set=[(X_val, y_val)],
+                    eval_metric='rmse',
+                    callbacks=[lgb.early_stopping(stopping_rounds=30, verbose=False)],
+                    **kwargs
+                )
+                return self
+
+        # 各層のモデルをEarlyStoppingLGBMで作成
+        lgb1 = EarlyStoppingLGBM(
             **params_dict['lightgbm'],
             random_state=self.cv_seed,
             verbose=-1,
@@ -657,14 +673,14 @@ class OuterCVRunner:
             num_threads=4
         )
 
-        # 第2層のモデル（パラメータを少し変更）
+        # 第2層のモデル
         params_layer2 = params_dict['lightgbm'].copy()
         params_layer2.update({
             'learning_rate': params_layer2['learning_rate'] * 0.8,
             'num_leaves': max(4, params_layer2['num_leaves'] // 2),
             'min_child_samples': params_layer2['min_child_samples'] + 50
         })
-        lgb2 = LGBMRegressor(
+        lgb2 = EarlyStoppingLGBM(
             **params_layer2,
             random_state=self.cv_seed + 1,
             verbose=-1,
@@ -672,29 +688,18 @@ class OuterCVRunner:
             num_threads=4
         )
 
-        # 第3層のモデル（さらにパラメータを調整）
+        # 第3層のモデル
         params_layer3 = params_dict['lightgbm'].copy()
         params_layer3.update({
             'learning_rate': params_layer3['learning_rate'] * 0.6,
             'num_leaves': max(4, params_layer3['num_leaves'] // 3),
             'min_child_samples': params_layer3['min_child_samples'] + 100
         })
-        lgb3 = LGBMRegressor(
+        lgb3 = EarlyStoppingLGBM(
             **params_layer3,
             random_state=self.cv_seed + 2,
             verbose=-1,
             n_estimators=5000,
-            num_threads=4
-        )
-
-        # 最終層のモデル
-        final_estimator = LGBMRegressor(
-            learning_rate=0.01,
-            num_leaves=8,
-            min_child_samples=200,
-            random_state=self.cv_seed + 3,
-            verbose=-1,
-            n_estimators=1000,
             num_threads=4
         )
 
@@ -705,7 +710,15 @@ class OuterCVRunner:
                 ('lgb2', lgb2),
                 ('lgb3', lgb3)
             ],
-            final_estimator=final_estimator,
+            final_estimator=LGBMRegressor(
+                learning_rate=0.01,
+                num_leaves=8,
+                min_child_samples=200,
+                random_state=self.cv_seed + 3,
+                verbose=-1,
+                n_estimators=1000,
+                num_threads=4
+            ),
             cv=5,
             n_jobs=-1,
             verbose=0
