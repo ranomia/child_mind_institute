@@ -192,49 +192,107 @@ class OuterCVRunner:
             # スタッキングモデルの各レイヤーのモデルを保存
             stacking_model = model.named_steps['model']
             
-            # ベースモデルの保存
+            # 検証データの前処理を実行
+            preprocessor = model.named_steps['preprocessor']
+            va_idx = cv_results['va_idx'][i_fold]
+            va_x = self.load_x_train().iloc[va_idx]
+            va_x_transformed = preprocessor.transform(va_x)
+            
+            # ベースモデルの保存とSHAPプロット
             for idx, estimator in enumerate(stacking_model.estimators_):
-                if hasattr(estimator, 'booster_'):  # LightGBMの場合
+                # モデルの保存
+                if hasattr(estimator, 'booster_'):
                     estimator.booster_.save_model(
                         f'{self.model_dir}/model_{self.run_name}_{i_fold}_base{idx}.txt'
                     )
-            
-            # 最終モデルの保存
-            if hasattr(stacking_model.final_estimator_, 'booster_'):  # LightGBMの場合
+                    
+                    # SHAPプロット
+                    plt.figure(figsize=(10, 6))
+                    explainer = shap.TreeExplainer(estimator.booster_)
+                    shap_values = explainer.shap_values(va_x_transformed)
+                    
+                    shap.summary_plot(
+                        shap_values,
+                        va_x_transformed,
+                        plot_type="bar",
+                        show=False
+                    )
+                    plt.title(f'SHAP Values - Base Model {idx}')
+                    plt.tight_layout()
+                    plt.savefig(f'{self.model_dir}/shap_{self.run_name}_{i_fold}_base{idx}.png')
+                    plt.close()
+
+            # 最終モデルの保存とSHAPプロット
+            if hasattr(stacking_model.final_estimator_, 'booster_'):
+                # モデルの保存
                 stacking_model.final_estimator_.booster_.save_model(
                     f'{self.model_dir}/model_{self.run_name}_{i_fold}_final.txt'
                 )
-            
-            # 学習曲線のプロット（各ベースモデルと最終モデル）
+                
+                # SHAPプロット
+                plt.figure(figsize=(10, 6))
+                explainer = shap.TreeExplainer(stacking_model.final_estimator_.booster_)
+                shap_values = explainer.shap_values(va_x_transformed)
+                
+                shap.summary_plot(
+                    shap_values,
+                    va_x_transformed,
+                    plot_type="bar",
+                    show=False
+                )
+                plt.title('SHAP Values - Final Model')
+                plt.tight_layout()
+                plt.savefig(f'{self.model_dir}/shap_{self.run_name}_{i_fold}_final.png')
+                plt.close()
+
+            # 学習曲線のプロット
             plt.figure(figsize=(15, 5))
+            has_valid_curves = False  # 有効な学習曲線があるかどうかを追跡
             
             # ベースモデルの学習曲線
             for idx, estimator in enumerate(stacking_model.estimators_):
                 if hasattr(estimator, 'evals_result_'):
                     plt.subplot(1, len(stacking_model.estimators_) + 1, idx + 1)
                     eval_results = estimator.evals_result_
-                    plt.plot(eval_results['train']['rmse'], label='Training Loss')
-                    plt.plot(eval_results['valid']['rmse'], label='Validation Loss')
+                    curves_plotted = False  # このサブプロットで曲線が描画されたかを追跡
+                    
+                    if 'training' in eval_results:
+                        plt.plot(eval_results['training']['rmse'], label='Training Loss')
+                        curves_plotted = True
+                    if 'valid_1' in eval_results:
+                        plt.plot(eval_results['valid_1']['rmse'], label='Validation Loss')
+                        curves_plotted = True
+                    
                     plt.xlabel('Iteration')
                     plt.ylabel('RMSE')
                     plt.title(f'Learning Curve - Base Model {idx}')
-                    plt.ylim([0, 1.0])
-                    plt.legend()
+                    if curves_plotted:
+                        plt.legend()
+                        has_valid_curves = True
             
             # 最終モデルの学習曲線
             if hasattr(stacking_model.final_estimator_, 'evals_result_'):
                 plt.subplot(1, len(stacking_model.estimators_) + 1, len(stacking_model.estimators_) + 1)
                 eval_results = stacking_model.final_estimator_.evals_result_
-                plt.plot(eval_results['train']['rmse'], label='Training Loss')
-                plt.plot(eval_results['valid']['rmse'], label='Validation Loss')
+                curves_plotted = False
+                
+                if 'training' in eval_results:
+                    plt.plot(eval_results['training']['rmse'], label='Training Loss')
+                    curves_plotted = True
+                if 'valid_1' in eval_results:
+                    plt.plot(eval_results['valid_1']['rmse'], label='Validation Loss')
+                    curves_plotted = True
+                
                 plt.xlabel('Iteration')
                 plt.ylabel('RMSE')
                 plt.title('Learning Curve - Final Model')
-                plt.ylim([0, 1.0])
-                plt.legend()
+                if curves_plotted:
+                    plt.legend()
+                    has_valid_curves = True
             
-            plt.tight_layout()
-            plt.savefig(f'{self.model_dir}/lr_{self.run_name}_{i_fold}.png')
+            if has_valid_curves:
+                plt.tight_layout()
+                plt.savefig(f'{self.model_dir}/lr_{self.run_name}_{i_fold}.png')
             plt.close()
 
             # 残差のプロット
@@ -266,46 +324,6 @@ class OuterCVRunner:
             
             plt.tight_layout()
             plt.savefig(f'{self.model_dir}/res_{self.run_name}_{i_fold}.png')
-
-            # shap
-            train_data = train_x.iloc[cv_results['tr_idx'][i_fold]]
-            valid_data = train_x.iloc[cv_results['va_idx'][i_fold]]
-            
-            # パイプラインの前処理を適用
-            train_processed = model.named_steps['preprocessor'].transform(train_data)
-            valid_processed = model.named_steps['preprocessor'].transform(valid_data)
-            
-            # 特徴量名を取得
-            numeric_features = self.selector.get_feature_names_out(feature_types=['int64', 'float64', 'int32', 'float32', 'int16', 'float16', 'int8', 'float8'])
-            categorical_features = self.selector.get_feature_names_out(feature_types=['category', 'object'])
-            boolean_features = self.selector.get_feature_names_out(feature_types=['bool'])
-            
-            feature_names = (
-                numeric_features +
-                [f"{f}_encoded" for f in categorical_features] +
-                [f"{f}_bool" for f in boolean_features]
-            )
-            
-            # SHAPの計算
-            explainer = shap.TreeExplainer(
-                model.named_steps['model'],
-                feature_names=feature_names,
-                feature_perturbation="interventional"
-            )
-            shap_values = explainer.shap_values(valid_processed)
-            
-            # SHAPプロット
-            plt.figure(figsize=(10, 6))
-            shap.summary_plot(
-                shap_values=shap_values,
-                features=valid_processed,
-                feature_names=feature_names,
-                show=False
-            )
-            plt.title(f'SHAP Summary Plot for {self.run_name}_{i_fold}')
-            plt.tight_layout()
-            plt.savefig(f'{self.model_dir}/shap_{self.run_name}_{i_fold}.png')
-            plt.close()
 
         # 各foldの結果をまとめる
         # va_idxes = np.concatenate(va_idxes)
@@ -679,7 +697,8 @@ class OuterCVRunner:
                 # early_stoppingを使用して学習
                 super().fit(
                     X_train, y_train,
-                    eval_set=[(X_val, y_val)],
+                    eval_set=[(X_train, y_train), (X_val, y_val)],
+                    eval_names=['train', 'valid'],
                     eval_metric='rmse',
                     callbacks=[lgb.early_stopping(stopping_rounds=30, verbose=False)],
                     **kwargs
