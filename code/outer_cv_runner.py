@@ -103,7 +103,7 @@ class OuterCVRunner:
             tuned_params_dict = self.format_tuned_params(tuned_params_dict_flatten)
             self.params_dict = self.update_params_dict(self.params_dict, tuned_params_dict)
 
-            # 3層スタッキングモデルの構築
+            # スタッキングモデルの構築
             model_pipe = self.build_stacking_model(self.params_dict)
             
             # 前処理部分のみを先にfit
@@ -114,18 +114,9 @@ class OuterCVRunner:
             tr_x_transformed = preprocessor.transform(tr_x)
             va_x_transformed = preprocessor.transform(va_x)
 
-            # スタッキングモデルの学習
+            # スタッキングモデルの学習（eval_setを使用しない）
             model = model_pipe.named_steps['model']
-            model.fit(
-                 tr_x_transformed
-                ,tr_y
-                ,eval_set=[(tr_x_transformed, tr_y), (va_x_transformed, va_y)]
-                ,eval_names=['train', 'valid']
-                ,eval_metric='rmse'
-                ,callbacks=[
-                     lgb.early_stopping(stopping_rounds=30, verbose=False)
-                ]
-            )
+            model.fit(tr_x_transformed, tr_y)
 
             # 学習データ・バリデーションデータへの予測・評価を行う
             tr_y_pred = model_pipe.predict(tr_x)
