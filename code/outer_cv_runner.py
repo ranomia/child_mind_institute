@@ -47,7 +47,7 @@ class OuterCVRunner:
         self.run_name = run_name
         self.model_cls = model_cls
         self.params_dict = params_dict
-        self.n_fold = 3
+        self.n_fold = 5
         self.dtype_dict = {}
         self.cv_seed = cv_seed
         self.tuning_seed = tuning_seed
@@ -80,23 +80,21 @@ class OuterCVRunner:
 
         if is_validation:
             # 学習データ・バリデーションデータをセットする
-            tr_idx, tu_idx, va_idx = self.load_index_fold_inner(i_fold)
+            tr_idx, va_idx = self.load_index_fold_inner(i_fold)
             if config.group_column is None:
                 tr_x, tr_y = train_x.iloc[tr_idx], train_y.iloc[tr_idx]
-                tu_x, tu_y = train_x.iloc[tu_idx], train_y.iloc[tu_idx]
                 va_x, va_y = train_x.iloc[va_idx], train_y.iloc[va_idx]
             else:
                 tr_x, tr_y, tr_g = train_x.iloc[tr_idx], train_y.iloc[tr_idx], train_group.iloc[tr_idx]
-                tu_x, tu_y, tu_g = train_x.iloc[tu_idx], train_y.iloc[tu_idx], train_group.iloc[tu_idx]
                 va_x, va_y, va_g = train_x.iloc[va_idx], train_y.iloc[va_idx], train_group.iloc[va_idx]
 
             # ハイパーパラメータのチューニングを行う
             if config.group_column is None:
                 inner_runner = InnerCVRunner(tuning_seed=self.tuning_seed)
-                tuned_params_dict_flatten = inner_runner.parameter_tuning(tu_x, tu_y, None, n_trials=100)
+                tuned_params_dict_flatten = inner_runner.parameter_tuning(tr_x, tr_y, None, n_trials=100)
             else:
                 inner_runner = InnerCVRunner(tuning_seed=self.tuning_seed)
-                tuned_params_dict_flatten = inner_runner.parameter_tuning(tu_x, tu_y, tu_g, n_trials=100)
+                tuned_params_dict_flatten = inner_runner.parameter_tuning(tr_x, tr_y, tr_g, n_trials=100)
             
             tuned_params_dict = {
                 'lightgbm': {},
@@ -151,7 +149,6 @@ class OuterCVRunner:
             
             # 実験条件・結果の保存
             cv_results['tr_idx'].append(tr_idx)
-            cv_results['tu_idx'].append(tu_idx)
             cv_results['va_idx'].append(va_idx)
             cv_results['tr_y'].append(tr_y)
             cv_results['va_y'].append(va_y)
@@ -185,7 +182,6 @@ class OuterCVRunner:
 
         cv_results = {
             'tr_idx': [],       # 各foldの学習データのインデックス
-            'tu_idx': [],       # 各foldのチューニングデータのインデックス
             'va_idx': [],       # 各foldの検証データのインデックス
             'group': [],             # 分析用のグループ
             'tr_rmse': [],       # 各foldの学習データに対するRMSE
@@ -605,19 +601,13 @@ class OuterCVRunner:
         if config.group_column is None:
             # tr+tuとvaの分割
             kfold = StratifiedKFold(n_splits=self.n_fold, shuffle=True, random_state=self.cv_seed)
-            trtu_idx, va_idx = list(kfold.split(train_x, train_y))[i_fold]
-            # trとtuの分割
-            tr_idx, tu_idx = train_test_split(trtu_idx, test_size=0.2, random_state=55)
+            tr_idx, va_idx = list(kfold.split(train_x, train_y))[i_fold]
         else:
             # tr+tuとvaの分割
             kfold = ShuffledGroupKFold(n_splits=self.n_fold, shuffle=True, random_state=self.cv_seed)
-            trtu_idx, va_idx = list(kfold.split(train_x, train_y, train_x[config.group_column]))[i_fold]
-            # trとtuの分割
-            tr_group, tu_group = train_test_split(train_x.iloc[trtu_idx][config.group_column].unique(), test_size=0.2, random_state=55)
-            tr_idx = np.array(train_x[train_x[config.group_column].isin(tr_group)].index)
-            tu_idx = np.array(train_x[train_x[config.group_column].isin(tu_group)].index)
+            tr_idx, va_idx = list(kfold.split(train_x, train_y, train_x[config.group_column]))[i_fold]
 
-        return tr_idx, tu_idx, va_idx
+        return tr_idx, va_idx
     
     def update_params_dict(self, params_dict: dict, tuned_params_dict: dict) -> dict:
         """
