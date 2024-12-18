@@ -100,7 +100,7 @@ class InnerCVRunner:
 
         va_y_pred = model_pipe.predict(va_x)
         
-        rmse = mean_squared_error(va_y, va_y_pred, squared=False)
+        rmse = np.sqrt(mean_squared_error(va_y, va_y_pred))
         # qwk = quadratic_weighted_kappa(va_y.round().astype(int), va_y_pred.round().astype(int))
 
         # return -qwk

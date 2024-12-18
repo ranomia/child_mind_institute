@@ -4,7 +4,7 @@ import os
 import json
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import root_mean_squared_error, mean_absolute_error
+from sklearn.metrics import mean_squared_error, mean_absolute_error
 from sklearn.model_selection import KFold, StratifiedKFold
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import VotingRegressor
@@ -140,8 +140,8 @@ class OuterCVRunner:
             va_y_pred = model_pipe.predict(va_x)
 
             # 評価指標の算出
-            cv_results['tr_rmse'].append(root_mean_squared_error(tr_y, tr_y_pred))
-            cv_results['va_rmse'].append(root_mean_squared_error(va_y, va_y_pred))
+            cv_results['tr_rmse'].append(np.sqrt(mean_squared_error(tr_y, tr_y_pred)))
+            cv_results['va_rmse'].append(np.sqrt(mean_squared_error(va_y, va_y_pred)))
             cv_results['tr_mae'].append(mean_absolute_error(tr_y, tr_y_pred))
             cv_results['va_mae'].append(mean_absolute_error(va_y, va_y_pred))
             cv_results['tr_qwk'].append(quadratic_weighted_kappa(tr_y, tr_y_pred.round(0).astype(int)))
