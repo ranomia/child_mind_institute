@@ -139,13 +139,20 @@ class OuterCVRunner:
             tr_y_pred = model_pipe.predict(tr_x)
             va_y_pred = model_pipe.predict(va_x)
 
+            # 閾値の最適化（訓練データで実施）
+            best_thresholds, _ = self.optimize_thresholds(tr_y, tr_y_pred)
+
+            # 最適化された閾値を適用
+            tr_y_pred_discrete = self.apply_thresholds(tr_y_pred, best_thresholds)
+            va_y_pred_discrete = self.apply_thresholds(va_y_pred, best_thresholds)
+
             # 評価指標の算出
             cv_results['tr_rmse'].append(np.sqrt(mean_squared_error(tr_y, tr_y_pred)))
             cv_results['va_rmse'].append(np.sqrt(mean_squared_error(va_y, va_y_pred)))
             cv_results['tr_mae'].append(mean_absolute_error(tr_y, tr_y_pred))
             cv_results['va_mae'].append(mean_absolute_error(va_y, va_y_pred))
-            cv_results['tr_qwk'].append(quadratic_weighted_kappa(tr_y, tr_y_pred.round(0).astype(int)))
-            cv_results['va_qwk'].append(quadratic_weighted_kappa(va_y, va_y_pred.round(0).astype(int)))
+            cv_results['tr_qwk'].append(quadratic_weighted_kappa(tr_y, tr_y_pred_discrete))
+            cv_results['va_qwk'].append(quadratic_weighted_kappa(va_y, va_y_pred_discrete))
             
             # 実験条件・結果の保存
             cv_results['tr_idx'].append(tr_idx)
@@ -373,38 +380,7 @@ class OuterCVRunner:
 
         logger.info(f'{self.run_name} - end prediction all')
 
-    def run_predict_from_model(self, test_x: pd.DataFrame, model_path: str) -> np.ndarray:
-        """
-        指定されたlightgbmモデルを使用してテストデータの予測を行う
-
-        Args:
-            test_x: テストデータ
-            model_path: lightgbmモデルのパス(.txtファイル)
-
-        Returns:
-            予測値の numpy array
-        """
-        logger.info(f'{self.run_name} - start prediction from model: {model_path}')
-
-        # モデルパイプラインの構築
-        model_pipe = self.build_model(is_pipeline=True, params_dict=self.params_dict)
-        
-        # 前処理部分のみを先にfit
-        preprocessor = model_pipe.named_steps['preprocessor']
-        preprocessor.fit(test_x)
-
-        # 前処理を適用
-        test_x_transformed = preprocessor.transform(test_x)
-
-        # lightgbmモデルの読み込み
-        model = lgb.Booster(model_file=model_path)
-        
-        # 予測の実行
-        pred = model.predict(test_x_transformed)
-
-        logger.info(f'{self.run_name} - end prediction from model')
-
-        return pred
+    
 
     def build_model(self, is_pipeline: bool, params_dict: dict):
         """
@@ -660,3 +636,58 @@ class OuterCVRunner:
             params_dict[key].update(value)
         
         return params_dict
+
+    def optimize_thresholds(self, y_true: np.ndarray, y_pred: np.ndarray) -> tuple:
+        """
+        QWKスコアを最大化する閾値を最適化する
+
+        Args:
+            y_true: 正解ラベル
+            y_pred: モデルの予測値（生の連続値）
+
+        Returns:
+            最適な閾値（t1, t2, t3）とその時のQWKスコア
+        """
+        # 探索範囲の設定
+        t1_range = np.linspace(0.2, 0.8, 30)
+        t2_range = np.linspace(1.2, 1.8, 30)
+        t3_range = np.linspace(2.2, 2.8, 30)
+        
+        best_score = -1
+        best_thresholds = None
+        
+        # グリッドサーチで最適な閾値を探索
+        for t1 in t1_range:
+            for t2 in t2_range:
+                for t3 in t3_range:
+                    if t1 < t2 < t3:  # 閾値の順序を保証
+                        y_pred_discrete = np.zeros_like(y_pred, dtype=int)
+                        y_pred_discrete[(y_pred >= t1) & (y_pred < t2)] = 1
+                        y_pred_discrete[(y_pred >= t2) & (y_pred < t3)] = 2
+                        y_pred_discrete[y_pred >= t3] = 3
+                        
+                        score = quadratic_weighted_kappa(y_true, y_pred_discrete)
+                        
+                        if score > best_score:
+                            best_score = score
+                            best_thresholds = (t1, t2, t3)
+        
+        return best_thresholds, best_score
+
+    def apply_thresholds(self, y_pred: np.ndarray, thresholds: tuple) -> np.ndarray:
+        """
+        最適化された閾値を使用して予測値を離散化する
+
+        Args:
+            y_pred: モデルの予測値（生の連続値）
+            thresholds: 最適化された閾値（t1, t2, t3）
+
+        Returns:
+            離散化された予測値（0, 1, 2, 3）
+        """
+        t1, t2, t3 = thresholds
+        y_pred_discrete = np.zeros_like(y_pred, dtype=int)
+        y_pred_discrete[(y_pred >= t1) & (y_pred < t2)] = 1
+        y_pred_discrete[(y_pred >= t2) & (y_pred < t3)] = 2
+        y_pred_discrete[y_pred >= t3] = 3
+        return y_pred_discrete
