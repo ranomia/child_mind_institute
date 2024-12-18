@@ -373,6 +373,39 @@ class OuterCVRunner:
 
         logger.info(f'{self.run_name} - end prediction all')
 
+    def run_predict_from_model(self, test_x: pd.DataFrame, model_path: str) -> np.ndarray:
+        """
+        指定されたlightgbmモデルを使用してテストデータの予測を行う
+
+        Args:
+            test_x: テストデータ
+            model_path: lightgbmモデルのパス(.txtファイル)
+
+        Returns:
+            予測値の numpy array
+        """
+        logger.info(f'{self.run_name} - start prediction from model: {model_path}')
+
+        # モデルパイプラインの構築
+        model_pipe = self.build_model(is_pipeline=True, params_dict=self.params_dict)
+        
+        # 前処理部分のみを先にfit
+        preprocessor = model_pipe.named_steps['preprocessor']
+        preprocessor.fit(test_x)
+
+        # 前処理を適用
+        test_x_transformed = preprocessor.transform(test_x)
+
+        # lightgbmモデルの読み込み
+        model = lgb.Booster(model_file=model_path)
+        
+        # 予測の実行
+        pred = model.predict(test_x_transformed)
+
+        logger.info(f'{self.run_name} - end prediction from model')
+
+        return pred
+
     def build_model(self, is_pipeline: bool, params_dict: dict):
         """
         クロスバリデーションでのfoldを指定して、モデルの作成を行う
