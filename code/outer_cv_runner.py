@@ -161,6 +161,7 @@ class OuterCVRunner:
             cv_results['va_y'].append(va_y)
             cv_results['tr_y_pred'].append(tr_y_pred)
             cv_results['va_y_pred'].append(va_y_pred)
+            cv_results['best_thresholds'].append(best_thresholds)
             # cv_results['params'].append(best_params)
 
             # モデル、インデックス、予測値、評価を返す
@@ -201,7 +202,8 @@ class OuterCVRunner:
             'va_y': [],           # 各foldの学習データの正解値
             'tr_y_pred': [],           # 各foldの検証データに対する予測値
             'va_y_pred': [],           # 各foldの検証データの正解値
-            'params': []            # 各foldのモデルのハイパーパラメータ
+            'params': [],            # 各foldのモデルのハイパーパラメータ
+            'best_thresholds': []   # 各foldの最適化された閾値
         }
 
         # 各foldで学習を行う
@@ -297,6 +299,9 @@ class OuterCVRunner:
             plt.tight_layout()
             plt.savefig(f'{self.model_dir}/shap_{self.run_name}_{i_fold}.png')
             plt.close()
+
+            # best_thresholdsを保存
+            Util.dump(cv_results['best_thresholds'][i_fold], f'{self.model_dir}/best_thresholds_{self.run_name}_{i_fold}.json')
 
         # 各foldの結果をまとめる
         # va_idxes = np.concatenate(va_idxes)
